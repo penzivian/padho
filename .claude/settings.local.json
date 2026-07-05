@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(pnpm -v)",
+      "Bash(command -v curl)",
+      "Bash(curl -sI --max-time 5 https://nodejs.org/dist/index.json)",
+      "Bash(curl -sI --max-time 5 https://registry.npmjs.org/)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}

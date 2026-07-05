@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Calm Ledger: cream paper, deep teal-green ink, warm sand accents */
+    --background: 45 33% 96%;
+    --foreground: 172 20% 14%;
+    --card: 46 42% 98%;
+    --card-foreground: 172 20% 14%;
+    --primary: 170 55% 24%;
+    --primary-foreground: 45 40% 98%;
+    --secondary: 168 30% 88%;
+    --secondary-foreground: 170 35% 18%;
+    --muted: 43 30% 90%;
+    --muted-foreground: 40 8% 40%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 43 24% 84%;
+    --input: 43 24% 78%;
+    --ring: 170 55% 30%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-serif tracking-tight;
+  }
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8;
+  }
+
+  .section-band {
+    @apply rounded-lg border bg-card p-4 shadow-sm;
+  }
+
+  /* Handwritten helper notes, borrowed from the Warm Workbook direction */
+  .script-note {
+    @apply font-script text-base text-muted-foreground;
+  }
+
+  /* Invite codes and timers */
+  .code-chip {
+    @apply rounded-md bg-secondary px-2.5 py-1 font-mono text-xs font-semibold tracking-wider text-secondary-foreground;
+  }
+
+  /* Progress bars grow in on load */
+  .bar-animate {
+    animation: bar-grow 0.7s ease-out;
+  }
+}
+
+@keyframes bar-grow {
+  from {
+    width: 0;
+  }
+}

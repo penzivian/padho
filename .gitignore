@@ -1,0 +1,9 @@
+.env*
+!.env.example
+.next/
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
