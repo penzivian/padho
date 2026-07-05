@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ClipboardList, PlusCircle } from "lucide-react";
 
 import { joinBatchAction } from "@/app/actions";
+import { ResultReveal } from "@/components/result-reveal";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +75,12 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     ? Math.round(progress.reduce((sum, snapshot) => sum + snapshot.score_percent, 0) / progress.length)
     : null;
   const firstName = profile.full_name.split(/\s+/)[0] || "student";
+  const hasBatch = memberships.length > 0;
+  // progress is fetched newest-first; delta compares the latest result to the one before it.
+  const latestResult = progress[0] ?? null;
+  const resultDelta =
+    latestResult && progress[1] ? Math.round(latestResult.score_percent - progress[1].score_percent) : null;
+  const firstOpenTestId = tests.find((test) => !submittedByTest.has(test.id))?.id ?? null;
 
   return (
     <main className="page-shell">
@@ -88,26 +95,46 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
         </p>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <p className="font-serif text-4xl font-semibold">{memberships.length}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Batches</p>
-        </Card>
-        <Card>
-          <p className="font-serif text-4xl font-semibold">{openTests}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Open tests</p>
-        </Card>
-        <Card>
-          <p className="font-serif text-4xl font-semibold">
-            {averageScore !== null ? `${averageScore}%` : "—"}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">Average score</p>
-        </Card>
-      </div>
+      {hasBatch && latestResult ? (
+        <ResultReveal
+          snapshotId={latestResult.id}
+          testTitle={latestResult.tests?.title ?? "Latest test"}
+          scorePercent={latestResult.score_percent}
+          delta={resultDelta}
+        />
+      ) : null}
 
-      <Card>
+      {hasBatch ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <p className="font-serif text-4xl font-semibold">{memberships.length}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Batches</p>
+          </Card>
+          <Card>
+            <p className="font-serif text-4xl font-semibold">{openTests}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Open tests</p>
+          </Card>
+          <Card>
+            <p className="font-serif text-4xl font-semibold">
+              {averageScore !== null ? `${averageScore}%` : "—"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Average score</p>
+          </Card>
+        </div>
+      ) : null}
+
+      <Card className={hasBatch ? undefined : "border-primary/40"}>
         <CardHeader>
-          <CardTitle>Join a batch</CardTitle>
+          <div>
+            <CardTitle className={hasBatch ? undefined : "text-xl"}>
+              {hasBatch ? "Join another batch" : "Join your batch to begin"}
+            </CardTitle>
+            {!hasBatch ? (
+              <p className="script-note mt-0.5">
+                Ask your teacher for the invite code — tests and progress appear right after.
+              </p>
+            ) : null}
+          </div>
           <PlusCircle className="h-5 w-5 text-primary" />
         </CardHeader>
         <form action={joinBatchAction} className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -115,7 +142,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
             <Input id="invite_code" name="invite_code" placeholder="e.g. 6F63S4Y" required />
           </FormField>
           <div className="flex items-end">
-            <SubmitButton pendingText="Joining">Join</SubmitButton>
+            <SubmitButton pendingText="Joining" variant={hasBatch ? "outline" : "default"}>
+              Join
+            </SubmitButton>
           </div>
         </form>
       </Card>
@@ -136,6 +165,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
         </section>
       ) : null}
 
+      {hasBatch ? (
       <section className="grid gap-4">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-primary" />
@@ -171,7 +201,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                   </div>
                 </dl>
                 {!submitted ? (
-                  <Button asChild>
+                  <Button asChild variant={test.id === firstOpenTestId ? "default" : "outline"}>
                     <Link href={`/student/tests/${test.id}`}>Take test</Link>
                   </Button>
                 ) : null}
@@ -180,7 +210,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
           })}
         </div>
       </section>
+      ) : null}
 
+      {hasBatch ? (
       <section className="grid gap-4">
         <h2 className="text-lg font-semibold">Progress</h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -201,6 +233,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
           <p className="script-note">Your scores will appear here after your first graded test —</p>
         ) : null}
       </section>
+      ) : null}
     </main>
   );
 }

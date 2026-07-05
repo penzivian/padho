@@ -42,9 +42,9 @@ export default function AuthPage({ searchParams }: AuthPageProps) {
         ) : null}
 
         {sent && devCode ? (
-          <p className="mb-4 rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
-            Demo mode — your login code is <strong className="text-base tracking-widest">{devCode}</strong>.
-            It has been filled in below; just press Continue.
+          <p className="mb-4 rounded-md border bg-muted p-3 text-sm text-muted-foreground">
+            Local test mode — code <strong className="text-foreground">{devCode}</strong> is
+            filled in below. Press Continue.
           </p>
         ) : null}
 
@@ -103,6 +103,10 @@ export default function AuthPage({ searchParams }: AuthPageProps) {
           </Button>
         ) : null}
       </Card>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Private by design — scores and answers are visible only to students and their teacher.
+      </p>
     </main>
   );
 }

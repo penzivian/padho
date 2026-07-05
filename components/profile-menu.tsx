@@ -44,7 +44,7 @@ export function ProfileMenu({ fullName, role, contact }: ProfileMenuProps) {
       <button
         aria-expanded={open}
         aria-label="Open profile menu"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground ring-offset-2 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground ring-offset-2 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         type="button"
         onClick={() => setOpen((current) => !current)}
       >

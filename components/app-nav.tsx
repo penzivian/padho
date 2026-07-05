@@ -31,7 +31,7 @@ export async function AppNav() {
           <Link href="/" className="font-serif text-xl font-bold text-primary">
             Padho.
           </Link>
-          <div className="flex items-center gap-1 overflow-x-auto text-sm">
+          <div className="no-scrollbar flex items-center gap-1 overflow-x-auto text-sm">
             <NavLinks links={links} />
           </div>
         </div>

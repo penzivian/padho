@@ -20,7 +20,7 @@ export function NavLinks({ links }: { links: NavLink[] }) {
           <Link
             key={link.href}
             className={cn(
-              "whitespace-nowrap rounded-md px-3 py-1.5 transition-colors",
+              "whitespace-nowrap rounded-md px-3 py-2 transition-colors",
               active ? "bg-secondary font-medium text-secondary-foreground" : "hover:bg-muted"
             )}
             href={link.href}

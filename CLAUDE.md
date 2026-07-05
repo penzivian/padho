@@ -46,6 +46,13 @@ Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code p
 
 A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with the migration applied — currently used for local dev/demo, not yet deployed.
 
+## Recent changes (2026-07-05 design psychology pass)
+
+- **First-run experiences** — teacher dashboard shows a 3-step guided checklist (batch → paper → test) until the loop completes; student dashboard becomes a single "join your batch" hero until they're in a batch.
+- **Results reveal** — students see each new graded result once as a celebration card (score, delta vs previous test, static encouragement line; seen-state in `sessionStorage`, no schema change, no AI calls).
+- **Teacher impact strip** — tests taken / graded / ≈grading time automated / students improving, computed from RLS-visible data.
+- **One primary action per screen** — quick actions, join form, and take-test buttons re-weighted so each screen directs instead of presenting options; nav tap targets enlarged; dev-code banner toned down to muted "local test mode"; privacy line added under the auth card.
+
 ## Recent changes (2026-07-05 correctness + deploy prep)
 
 - **Keyless-MCQ footgun closed** — `scheduleTestAction` now blocks scheduling any paper containing MCQs without an answer key (they would silently auto-score 0), naming the offending question numbers in the `?error=`; check runs on the RLS-respecting client. Pure helper `findKeylessMcqs` added to `lib/grading.ts` (+ unit test, 19 → 20).
