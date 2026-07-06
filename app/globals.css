@@ -83,6 +83,13 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .bar-animate,
+  .pop-in {
+    animation: none;
+  }
+}
+
 @keyframes bar-grow {
   from {
     width: 0;

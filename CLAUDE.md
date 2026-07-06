@@ -2,7 +2,7 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-05** (keyless-MCQ guard + deploy prep — see [Recent changes](#recent-changes-2026-07-05-correctness--deploy-prep)).
+**Last updated: 2026-07-06** (results & ranks, WhatsApp delivery, practice mode — see [Recent changes](#recent-changes-2026-07-06-results-ranks-whatsapp-practice)).
 
 ## What this project is
 
@@ -45,6 +45,14 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code path) + onboarding · teacher batch management (create, invite code with copy-to-clipboard, manual add by phone, remove, roster with avatar stack) · question papers (AI-generate, key-free PDF extraction via `lib/extract.ts` + `unpdf`, review/edit with an answer-key paste box, save) · tests (schedule with a keyless-MCQ answer-key guard, student take via safe RPC, live countdown) · grading (MCQ auto-score server-side, subjective AI-suggest + teacher approval) · progress snapshots + dashboards (both roles, animated topic bars) · single-turn AI doubt solving · profile page (view/edit name + phone) · top nav with role-aware links and a profile menu. Consistent pending/error states across all forms and AI actions. Unit tests pass (`pnpm test`, 20/20) — pure scoring helpers (including `findKeylessMcqs`), a full mixed multi-topic `buildProgressSnapshot`, the `lib/ai.ts` mock outputs, and the `lib/extract.ts` PDF-parsing heuristics (verified against a real 25-question uploaded PDF, not just synthetic fixtures). A manual full-cycle E2E script lives in `MANUAL_E2E.md`; a demo-data seed script lives in `scripts/seed-demo.ts`.
 
 A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with the migration applied — currently used for local dev/demo, not yet deployed.
+
+## Recent changes (2026-07-06 results, ranks, WhatsApp, practice)
+
+- **Results & ranks** — teacher `/teacher/tests/[testId]/results` (ranked table with top-3 accents, CSS score-distribution strip, per-row strongest topic) and student `/student/results/[testId]` (score, rank + percentile, delta, topic bars). Pure `lib/ranks.ts` (standard competition ranking, computed on read, never stored) + tests. Migration `0002` adds `tests.show_full_ranks` (default false); the top-3-vs-full-list gate is enforced **server-side** — the full list never ships to students unless the flag is on.
+- **WhatsApp result delivery (zero-API)** — `lib/whatsapp.ts` builds warm bilingual-friendly messages + `wa.me` links (Indian number normalization; rank line only when ranks are visible; login-required result URLs, deliberately no public tokens). Per-row send buttons + "Copy all messages" on the results page. Business-API upgrade path noted in `README.md` — `buildResultMessage` is the seam.
+- **Practice mode** — migration `0003`: `practice_sets` (papers reused, never cloned) + `practice_attempts` (effort log) with RLS, and the answer-key-safe `get_student_practice_questions` RPC. `checkPracticeAnswerAction` follows defense-in-depth: RLS-gated set visibility → admin key read → attempt recorded before any reveal. One-question-at-a-time session UI (`/student/practice`): streak counter, teal/amber never-red feedback states, sticky mobile check/next button, self-marked subjective rubric reveals, session summary. **Practice never touches `progress_snapshots`, ranks, or test stats** — that's a product boundary, keep it.
+- Teacher side: "Publish as practice" per paper (+ unpublish), "practice answers this week" on the impact strip.
+- `prefers-reduced-motion` now disables the bar/pop animations. Tests 20 → 29 (`ranks`, `whatsapp`, `practice`).
 
 ## Recent changes (2026-07-05 design psychology pass)
 
@@ -99,5 +107,5 @@ npm.cmd exec pnpm@10.14.0 build   # type-check + production build
 1. **Hardening pass — DONE (2026-06-30).** Model string fixed, extraction made resilient, error/loading states tightened, scoring-pipeline + AI-mock tests added, `enforceAiLimit` cleaned up.
 2. **Platform bring-up + design pass — DONE (2026-06-30).** Real Supabase project provisioned and migrated; auth hardened with a dev-only on-screen-code fallback and a Google Sign-In code path; key-free PDF extraction; full redesign; demo data seed script. See [Recent changes](#recent-changes-2026-06-30-platform-pass).
 3. **Production readiness — IN PROGRESS (code/config side done 2026-07-05; recommended next).** Code and docs are deploy-ready: clean production build, env checklist in `.env.example`, deploy guide in `README.md`. Remaining are the manual dashboard steps (Site URL, custom SMTP + OTP template edit, optional Google OAuth credentials) and the Vercel deploy itself — then run `MANUAL_E2E.md` against the deployed app and **put it in front of one real teacher**.
-4. **Phase 1** — student/parent polish, WhatsApp weekly reports, fee tracking, attendance (deferred features; only when chosen).
+4. **Phase 1** — student/parent polish, WhatsApp weekly reports, fee tracking, attendance (deferred features; only when chosen). Also queued: **WhatsApp Business API upgrade** (swap `wa.me` behind `buildResultMessage` when volume justifies it), **AI-coached practice feedback** (deliberately not built yet), **dark mode** (students study at night).
 5. **Phase 3 (later)** — public discovery layer, once 8–10 institutes have real activity in the platform.

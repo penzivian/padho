@@ -41,6 +41,7 @@ type SubmissionRow = {
 
 type ProgressRow = {
   id: string;
+  test_id: string;
   score_percent: number;
   topic_breakdown: Json;
   created_at: string;
@@ -61,7 +62,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       supabase.from("test_submissions").select("test_id,status"),
       supabase
         .from("progress_snapshots")
-        .select("id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
+        .select("id,test_id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
         .order("created_at", { ascending: false })
     ]);
 
@@ -226,6 +227,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               </CardHeader>
               <p className="mb-3 text-sm text-muted-foreground">{snapshot.batches?.name ?? "-"}</p>
               <TopicBreakdown value={snapshot.topic_breakdown} />
+              <Button asChild className="mt-3" size="sm" variant="outline">
+                <Link href={`/student/results/${snapshot.test_id}`}>Full result &amp; rank</Link>
+              </Button>
             </Card>
           ))}
         </div>

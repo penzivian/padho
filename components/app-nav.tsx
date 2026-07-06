@@ -14,6 +14,7 @@ const TEACHER_LINKS = [
 
 const STUDENT_LINKS = [
   { href: "/student", label: "Dashboard" },
+  { href: "/student/practice", label: "Practice" },
   { href: "/student/doubts", label: "Doubts" }
 ];
 

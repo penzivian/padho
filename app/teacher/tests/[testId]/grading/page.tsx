@@ -72,9 +72,14 @@ export default async function GradingPage({ params }: GradingPageProps) {
           <h1 className="text-2xl font-semibold">Grading · {visibleTest.title}</h1>
           <p className="script-note mt-0.5">Approve → student&apos;s progress updates</p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/teacher/tests">Back to tests</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/teacher/tests/${params.testId}/results`}>Results &amp; ranks</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/teacher/tests">Back to tests</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

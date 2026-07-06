@@ -148,12 +148,17 @@ export default async function TeacherTestsPage({ searchParams }: TestsPageProps)
                   </dd>
                 </div>
               </dl>
-              <Button asChild variant="outline">
-                <Link href={`/teacher/tests/${test.id}/grading`}>
-                  <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
-                  Grade
-                </Link>
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline">
+                  <Link href={`/teacher/tests/${test.id}/grading`}>
+                    <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
+                    Grade
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={`/teacher/tests/${test.id}/results`}>Results</Link>
+                </Button>
+              </div>
             </Card>
           );
         })}

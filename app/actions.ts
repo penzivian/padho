@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
 import { buildProgressSnapshot, findKeylessMcqs, scoreMcqAnswer } from "@/lib/grading";
+import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { generateInviteCode, normalizePhone } from "@/lib/utils";
@@ -592,6 +593,150 @@ export async function approveGradesAction(formData: FormData) {
   }
 
   revalidatePath("/teacher/tests");
+}
+
+export async function toggleRankVisibilityAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const testId = readString(formData, "test_id");
+  const next = readString(formData, "show_full_ranks") === "true";
+
+  const { data: visibleTest } = await supabase
+    .from("tests")
+    .select("id")
+    .eq("id", testId)
+    .maybeSingle();
+
+  if (!visibleTest) redirect("/teacher/tests?error=Test%20not%20available");
+
+  const { error } = await supabase
+    .from("tests")
+    .update({ show_full_ranks: next })
+    .eq("id", testId);
+
+  if (error) {
+    redirect(`/teacher/tests/${testId}/results?error=${encodeURIComponent(error.message)}`);
+  }
+  revalidatePath(`/teacher/tests/${testId}/results`);
+  redirect(`/teacher/tests/${testId}/results`);
+}
+
+export async function publishPracticeAction(formData: FormData) {
+  const { user } = await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const paperId = readString(formData, "paper_id");
+  const batchId = readString(formData, "batch_id");
+
+  const { data: paper } = await supabase
+    .from("question_papers")
+    .select("id,title")
+    .eq("id", paperId)
+    .maybeSingle();
+
+  if (!paper) redirect("/teacher/papers?error=Paper%20not%20available");
+
+  const { error } = await supabase.from("practice_sets").insert({
+    teacher_id: user.id,
+    batch_id: batchId,
+    paper_id: paperId,
+    title: paper.title
+  });
+
+  if (error) {
+    const message = error.message.toLowerCase().includes("duplicate")
+      ? "That paper is already published as practice for this batch."
+      : error.message;
+    redirect(`/teacher/papers?error=${encodeURIComponent(message)}`);
+  }
+  revalidatePath("/teacher/papers");
+  redirect("/teacher/papers");
+}
+
+export async function unpublishPracticeAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const setId = readString(formData, "set_id");
+
+  const { error } = await supabase.from("practice_sets").delete().eq("id", setId);
+  if (error) redirect(`/teacher/papers?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/teacher/papers");
+}
+
+export type PracticeCheckResult = {
+  ok: boolean;
+  message: string;
+  kind?: "mcq" | "subjective";
+  correct?: boolean;
+  correctAnswer?: string | null;
+  rubric?: string | null;
+  attemptId?: string;
+};
+
+export async function checkPracticeAnswerAction(input: {
+  setId: string;
+  questionId: string;
+  answer: string;
+}): Promise<PracticeCheckResult> {
+  const { user } = await requireRole("student");
+  const supabase = createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
+
+  // Visibility gate through RLS: the set is only selectable if the student belongs
+  // to its batch. Only then is the answer key read with the admin client.
+  const { data: visibleSet } = await supabase
+    .from("practice_sets")
+    .select("id,paper_id")
+    .eq("id", input.setId)
+    .maybeSingle();
+
+  if (!visibleSet) return { ok: false, message: "Practice set not available" };
+
+  const { data: question, error: questionError } = await admin
+    .from("questions")
+    .select("question_type,correct_answer,rubric")
+    .eq("id", input.questionId)
+    .eq("question_paper_id", visibleSet.paper_id)
+    .maybeSingle();
+
+  if (questionError || !question) {
+    return { ok: false, message: "Question not found in this practice set" };
+  }
+
+  // The reveal only happens after the attempt is recorded (RLS-checked insert).
+  const isMcq = question.question_type === "mcq";
+  const correct = isMcq ? isMcqAnswerCorrect(input.answer, question.correct_answer) : null;
+  const { data: attempt, error: attemptError } = await supabase
+    .from("practice_attempts")
+    .insert({ ...buildPracticeAttempt(input.questionId, input.answer, correct), student_id: user.id })
+    .select("id")
+    .single();
+
+  if (attemptError) return { ok: false, message: attemptError.message };
+
+  if (isMcq) {
+    return {
+      ok: true,
+      message: "checked",
+      kind: "mcq",
+      correct: correct === true,
+      correctAnswer: question.correct_answer,
+      attemptId: attempt.id
+    };
+  }
+
+  return { ok: true, message: "checked", kind: "subjective", rubric: question.rubric, attemptId: attempt.id };
+}
+
+export async function selfMarkPracticeAction(input: { attemptId: string; gotIt: boolean }) {
+  await requireRole("student");
+  const supabase = createSupabaseServerClient();
+  // RLS restricts the update to the student's own attempt rows.
+  const { error } = await supabase
+    .from("practice_attempts")
+    .update({ is_correct: input.gotIt ? true : null })
+    .eq("id", input.attemptId);
+
+  return error ? { ok: false, message: error.message } : { ok: true, message: "saved" };
 }
 
 export async function askDoubtAction(

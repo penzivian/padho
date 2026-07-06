@@ -82,6 +82,13 @@ npm.cmd exec pnpm@10.14.0 build
    The default template is link-only; without this edit users never see a typeable code.
 4. **Phone OTP (optional, not needed for launch)** — email OTP is the launch path. Configure an SMS provider under Authentication → Sign In / Providers → Phone only if you later want phone logins (students added by phone can't sign in until then).
 
+## WhatsApp result delivery — upgrade path
+
+Result sharing uses wa.me click-to-chat deep links: messages send from the teacher's own
+WhatsApp (no Meta business verification, no per-message cost). When volume justifies it,
+swap the `buildWaLink` usage for a WhatsApp Business API provider (Gupshup/AiSensy) behind
+the same `buildResultMessage` helper in `lib/whatsapp.ts` — that helper is the seam.
+
 ## Notes
 
 - Phone OTP requires SMS provider configuration in Supabase.

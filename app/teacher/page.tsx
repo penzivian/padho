@@ -15,6 +15,7 @@ export default async function TeacherHomePage() {
     { count: testCount },
     { count: submissionCount },
     { count: gradedCount },
+    { count: practiceCount },
     { data: snapshotData }
   ] = await Promise.all([
     supabase.from("batches").select("id", { count: "exact", head: true }),
@@ -22,6 +23,10 @@ export default async function TeacherHomePage() {
     supabase.from("tests").select("id", { count: "exact", head: true }),
     supabase.from("test_submissions").select("id", { count: "exact", head: true }),
     supabase.from("test_submissions").select("id", { count: "exact", head: true }).eq("status", "graded"),
+    supabase
+      .from("practice_attempts")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
     supabase
       .from("progress_snapshots")
       .select("student_id,score_percent,created_at")
@@ -96,6 +101,11 @@ export default async function TeacherHomePage() {
                   {improvement.improving} of {improvement.total}
                 </strong>{" "}
                 students improving
+              </span>
+            ) : null}
+            {(practiceCount ?? 0) > 0 ? (
+              <span>
+                <strong className="font-serif text-lg">{practiceCount}</strong> practice answers this week
               </span>
             ) : null}
           </p>
