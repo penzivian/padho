@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-// Live countdown chip for a scheduled test window. Display-only — submission
-// timing is still enforced server-side in submitTestAction.
-export function TestCountdown({ endsAt }: { endsAt: string }) {
+// Live countdown chip toward a deadline. Display-only — timing rules are always
+// enforced server-side. `prefix` and `expiredText` let it double as a
+// "starts in …" chip for upcoming tests.
+export function TestCountdown({
+  endsAt,
+  prefix = "",
+  expiredText = "Time up"
+}: {
+  endsAt: string;
+  prefix?: string;
+  expiredText?: string;
+}) {
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -17,16 +26,24 @@ export function TestCountdown({ endsAt }: { endsAt: string }) {
   if (remainingMs === null) return <span className="code-chip">--:--</span>;
 
   if (remainingMs === 0) {
-    return <span className="code-chip bg-destructive/10 text-destructive">Time up</span>;
+    return (
+      <span className={expiredText === "Time up" ? "code-chip bg-destructive/10 text-destructive" : "code-chip"}>
+        {expiredText}
+      </span>
+    );
   }
 
   const totalSeconds = Math.floor(remainingMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+  const display =
+    hours > 0 ? `${hours}h ${minutes}m` : `${minutes}:${String(seconds).padStart(2, "0")}`;
 
   return (
     <span className="code-chip">
-      {minutes}:{String(seconds).padStart(2, "0")}
+      {prefix}
+      {display}
     </span>
   );
 }

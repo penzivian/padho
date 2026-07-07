@@ -30,3 +30,20 @@ export function buildResultMessage(input: ResultMessageInput) {
 export function buildWaLink(phone: string, message: string) {
   return `https://wa.me/${normalizeWaPhone(phone)}?text=${encodeURIComponent(message)}`;
 }
+
+// Student-voice share message ("Share with parent"). No phone number: the bare wa.me
+// share link opens the sender's own WhatsApp contact picker.
+export function buildStudentShareMessage(input: {
+  testTitle: string;
+  percentage: number;
+  rank?: number | null;
+  totalStudents?: number | null;
+}) {
+  const rankLine =
+    input.rank && input.totalStudents ? `, Rank ${input.rank} of ${input.totalStudents}` : "";
+  return `Namaskar! I scored ${input.percentage}% in ${input.testTitle}${rankLine} — via Padho.`;
+}
+
+export function buildWaShareLink(message: string) {
+  return `https://wa.me/?text=${encodeURIComponent(message)}`;
+}

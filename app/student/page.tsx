@@ -1,14 +1,17 @@
 import Link from "next/link";
-import { ClipboardList, PlusCircle } from "lucide-react";
+import { ClipboardList, Dumbbell, Flame, PlusCircle } from "lucide-react";
 
 import { joinBatchAction } from "@/app/actions";
 import { ResultReveal } from "@/components/result-reveal";
+import { Sparkline } from "@/components/sparkline";
 import { SubmitButton } from "@/components/submit-button";
+import { TestCountdown } from "@/components/test-countdown";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth";
+import { calcDayStreak } from "@/lib/streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
 import type { Json } from "@/types/database";
@@ -52,19 +55,29 @@ type ProgressRow = {
 export default async function StudentHomePage({ searchParams }: StudentPageProps) {
   const { profile } = await requireProfile("student");
   const supabase = createSupabaseServerClient();
-  const [{ data: membershipData }, { data: testData }, { data: submissionData }, { data: progressData }] =
-    await Promise.all([
-      supabase.from("batch_students").select("batch_id,batches(name,subject,exam_target)"),
-      supabase
-        .from("tests")
-        .select("id,title,scheduled_at,duration_minutes,batches(name)")
-        .order("scheduled_at", { ascending: false }),
-      supabase.from("test_submissions").select("test_id,status"),
-      supabase
-        .from("progress_snapshots")
-        .select("id,test_id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
-        .order("created_at", { ascending: false })
-    ]);
+  const [
+    { data: membershipData },
+    { data: testData },
+    { data: submissionData },
+    { data: progressData },
+    { data: attemptData }
+  ] = await Promise.all([
+    supabase.from("batch_students").select("batch_id,batches(name,subject,exam_target)"),
+    supabase
+      .from("tests")
+      .select("id,title,scheduled_at,duration_minutes,batches(name)")
+      .order("scheduled_at", { ascending: false }),
+    supabase.from("test_submissions").select("test_id,status"),
+    supabase
+      .from("progress_snapshots")
+      .select("id,test_id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("practice_attempts")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(400)
+  ]);
 
   const memberships = (membershipData ?? []) as unknown as BatchMembership[];
   const tests = (testData ?? []) as unknown as TestRow[];
@@ -83,11 +96,38 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     latestResult && progress[1] ? Math.round(latestResult.score_percent - progress[1].score_percent) : null;
   const firstOpenTestId = tests.find((test) => !submittedByTest.has(test.id))?.id ?? null;
 
+  // "Today" hero: a live test wins; else the next upcoming test; else practice.
+  const now = Date.now();
+  const endOf = (test: TestRow) =>
+    new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000;
+  const liveTest =
+    tests.find(
+      (test) =>
+        !submittedByTest.has(test.id) &&
+        new Date(test.scheduled_at).getTime() <= now &&
+        now <= endOf(test)
+    ) ?? null;
+  const nextTest = liveTest
+    ? null
+    : (tests
+        .filter((test) => !submittedByTest.has(test.id) && new Date(test.scheduled_at).getTime() > now)
+        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null);
+  const streak = calcDayStreak((attemptData ?? []).map((row) => row.created_at as string));
+  const trendValues = [...progress].reverse().map((snapshot) => snapshot.score_percent);
+
   return (
     <main className="page-shell">
-      <div>
-        <p className="script-note text-lg">Namaskar,</p>
-        <h1 className="text-3xl font-semibold">{firstName}</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="script-note text-lg">Namaskar,</p>
+          <h1 className="text-3xl font-semibold">{firstName}</h1>
+        </div>
+        {streak > 0 ? (
+          <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-secondary/50 px-3 py-1.5 text-sm font-medium text-primary">
+            <Flame className="h-4 w-4" aria-hidden="true" />
+            {streak}-day practice streak
+          </span>
+        ) : null}
       </div>
 
       {searchParams?.error ? (
@@ -106,6 +146,60 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       ) : null}
 
       {hasBatch ? (
+        liveTest ? (
+          <Card className="border-primary/40">
+            <CardHeader>
+              <div>
+                <p className="script-note">Right now —</p>
+                <CardTitle className="text-xl">{liveTest.title}</CardTitle>
+              </div>
+              <TestCountdown
+                endsAt={new Date(endOf(liveTest)).toISOString()}
+                prefix="ends in "
+              />
+            </CardHeader>
+            <Button asChild>
+              <Link href={`/student/tests/${liveTest.id}`}>Take the test</Link>
+            </Button>
+          </Card>
+        ) : nextTest ? (
+          <Card>
+            <CardHeader>
+              <div>
+                <p className="script-note">Up next —</p>
+                <CardTitle className="text-xl">{nextTest.title}</CardTitle>
+              </div>
+              <TestCountdown endsAt={nextTest.scheduled_at} prefix="starts in " expiredText="live now" />
+            </CardHeader>
+            <p className="text-sm text-muted-foreground">
+              {formatDateTime(nextTest.scheduled_at)} · until then, keep the streak going.
+            </p>
+            <Button asChild className="mt-3" variant="outline">
+              <Link href="/student/practice">
+                <Dumbbell className="h-4 w-4" aria-hidden="true" />
+                Practice now
+              </Link>
+            </Button>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <div>
+                <p className="script-note">Nothing scheduled —</p>
+                <CardTitle className="text-xl">Perfect day to practice</CardTitle>
+              </div>
+            </CardHeader>
+            <Button asChild>
+              <Link href="/student/practice">
+                <Dumbbell className="h-4 w-4" aria-hidden="true" />
+                Start practicing
+              </Link>
+            </Button>
+          </Card>
+        )
+      ) : null}
+
+      {hasBatch ? (
         <div className="grid gap-4 sm:grid-cols-3">
           <Card>
             <p className="font-serif text-4xl font-semibold">{memberships.length}</p>
@@ -116,10 +210,15 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
             <p className="mt-1 text-sm text-muted-foreground">Open tests</p>
           </Card>
           <Card>
-            <p className="font-serif text-4xl font-semibold">
-              {averageScore !== null ? `${averageScore}%` : "—"}
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-serif text-4xl font-semibold">
+                {averageScore !== null ? `${averageScore}%` : "—"}
+              </p>
+              <Sparkline className="mt-1" values={trendValues} />
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {trendValues.length >= 2 ? "Score trend" : "Average score"}
             </p>
-            <p className="mt-1 text-sm text-muted-foreground">Average score</p>
           </Card>
         </div>
       ) : null}
@@ -168,12 +267,17 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
 
       {hasBatch ? (
       <section className="grid gap-4">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Tests</h2>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Tests</h2>
+          </div>
+          <Button asChild size="sm" variant="ghost">
+            <Link href="/student/tests">All tests →</Link>
+          </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          {tests.map((test) => {
+          {tests.slice(0, 4).map((test) => {
             const submitted = submittedByTest.get(test.id);
             return (
               <Card key={test.id}>

@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { BookOpenCheck, CheckCircle2, Circle, ClipboardList, UsersRound } from "lucide-react";
+import { AlertCircle, BookOpenCheck, CheckCircle2, Circle, ClipboardList, UsersRound } from "lucide-react";
 
+import { Sparkline } from "@/components/sparkline";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
+import { findKeylessMcqs } from "@/lib/grading";
+import { weakestTopics } from "@/lib/topics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import type { Json } from "@/types/database";
 
 export default async function TeacherHomePage() {
   const { profile } = await requireProfile("teacher");
@@ -16,7 +20,10 @@ export default async function TeacherHomePage() {
     { count: submissionCount },
     { count: gradedCount },
     { count: practiceCount },
-    { data: snapshotData }
+    { data: snapshotData },
+    { data: pendingData },
+    { data: paperData },
+    { data: liveTestData }
   ] = await Promise.all([
     supabase.from("batches").select("id", { count: "exact", head: true }),
     supabase.from("question_papers").select("id", { count: "exact", head: true }),
@@ -29,8 +36,15 @@ export default async function TeacherHomePage() {
       .gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
     supabase
       .from("progress_snapshots")
-      .select("student_id,score_percent,created_at")
-      .order("created_at", { ascending: true })
+      .select("student_id,score_percent,created_at,topic_breakdown")
+      .order("created_at", { ascending: true }),
+    supabase.from("test_submissions").select("id,tests(id,title)").eq("status", "pending"),
+    supabase.from("question_papers").select("id,title,questions(question_type,correct_answer)"),
+    supabase
+      .from("tests")
+      .select("id,title,scheduled_at,duration_minutes")
+      .eq("status", "scheduled")
+      .lte("scheduled_at", new Date().toISOString())
   ]);
 
   const firstName = profile.full_name.split(/\s+/)[0] || "teacher";
@@ -41,6 +55,67 @@ export default async function TeacherHomePage() {
   ];
   const setupDone = steps.every((step) => step.done);
   const improvement = improvementStats(snapshotData ?? []);
+
+  // Needs-attention queue: grading waiting, keyless papers, tests live right now.
+  const pendingByTest = new Map<string, { title: string; count: number }>();
+  for (const row of (pendingData ?? []) as unknown as { tests: { id: string; title: string } | null }[]) {
+    if (!row.tests) continue;
+    const entry = pendingByTest.get(row.tests.id) ?? { title: row.tests.title, count: 0 };
+    entry.count += 1;
+    pendingByTest.set(row.tests.id, entry);
+  }
+  const keylessPapers = (
+    (paperData ?? []) as unknown as {
+      id: string;
+      title: string;
+      questions: { question_type: "mcq" | "subjective"; correct_answer: string | null }[];
+    }[]
+  ).filter(
+    (paper) =>
+      findKeylessMcqs(
+        paper.questions.map((question) => ({
+          type: question.question_type,
+          correctAnswer: question.correct_answer
+        }))
+      ).length > 0
+  );
+  const nowMs = Date.now();
+  const liveTests = ((liveTestData ?? []) as { id: string; title: string; scheduled_at: string; duration_minutes: number }[]).filter(
+    (test) => nowMs <= new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000
+  );
+  const attention: { text: string; href: string; action: string }[] = [
+    ...[...pendingByTest.entries()].map(([id, entry]) => ({
+      text: `${entry.count} submission${entry.count === 1 ? "" : "s"} waiting in ${entry.title}`,
+      href: `/teacher/tests/${id}/grading`,
+      action: "Grade"
+    })),
+    ...keylessPapers.map((paper) => ({
+      text: `${paper.title} has MCQs without answer keys`,
+      href: "/teacher/papers",
+      action: "Fix"
+    })),
+    ...liveTests.map((test) => ({
+      text: `${test.title} is live right now`,
+      href: `/teacher/tests/${test.id}/results`,
+      action: "Watch"
+    }))
+  ].slice(0, 4);
+
+  // Batch trend: average score per calendar day of graded snapshots, oldest → newest.
+  const byDay = new Map<string, { sum: number; count: number }>();
+  for (const snapshot of snapshotData ?? []) {
+    const key = new Date(snapshot.created_at).toDateString();
+    const entry = byDay.get(key) ?? { sum: 0, count: 0 };
+    entry.sum += snapshot.score_percent;
+    entry.count += 1;
+    byDay.set(key, entry);
+  }
+  const trend = [...byDay.values()].map((entry) => Math.round(entry.sum / entry.count));
+  const weakest = weakestTopics(
+    ((snapshotData ?? []) as unknown as { topic_breakdown: Json }[]).map(
+      (snapshot) => snapshot.topic_breakdown
+    )
+  );
 
   return (
     <main className="page-shell">
@@ -83,6 +158,27 @@ export default async function TeacherHomePage() {
         </Card>
       ) : null}
 
+      {attention.length > 0 ? (
+        <Card className="border-amber-600/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertCircle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+              Needs your attention
+            </CardTitle>
+          </CardHeader>
+          <ul className="grid gap-2">
+            {attention.map((item) => (
+              <li key={item.text} className="flex items-center justify-between gap-3 text-sm">
+                <span>{item.text}</span>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={item.href}>{item.action}</Link>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
       {(submissionCount ?? 0) > 0 ? (
         <div className="rounded-lg border bg-secondary/40 px-4 py-3">
           <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
@@ -117,6 +213,61 @@ export default async function TeacherHomePage() {
         <StatCard href="/teacher/papers" icon={<BookOpenCheck className="h-5 w-5" />} label="Papers" value={paperCount ?? 0} />
         <StatCard href="/teacher/tests" icon={<ClipboardList className="h-5 w-5" />} label="Tests" value={testCount ?? 0} />
       </div>
+
+      {weakest.length > 0 || trend.length >= 2 ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {weakest.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-base">Reteach radar</CardTitle>
+                  <p className="script-note mt-0.5">What the batch finds hardest —</p>
+                </div>
+              </CardHeader>
+              <div className="grid gap-2.5">
+                {weakest.map((topic) => (
+                  <div key={topic.topic} className="grid gap-1 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span>{topic.topic}</span>
+                      <span
+                        className={
+                          topic.percent < 60 ? "font-serif font-semibold text-amber-700" : "font-serif font-semibold"
+                        }
+                      >
+                        {topic.percent}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={
+                          topic.percent < 60
+                            ? "bar-animate h-full rounded-full bg-amber-500"
+                            : "bar-animate h-full rounded-full bg-primary"
+                        }
+                        style={{ width: `${topic.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+          {trend.length >= 2 ? (
+            <Card>
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-base">Batch trend</CardTitle>
+                  <p className="script-note mt-0.5">Average score over time —</p>
+                </div>
+              </CardHeader>
+              <div className="flex items-end justify-between gap-3">
+                <p className="font-serif text-4xl font-semibold">{trend[trend.length - 1]}%</p>
+                <Sparkline className="h-12 w-40" values={trend} />
+              </div>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
 
       {setupDone ? (
         <section className="grid gap-3 sm:grid-cols-3">

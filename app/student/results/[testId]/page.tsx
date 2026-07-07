@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ShareResultButton } from "@/components/share-result-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
@@ -97,9 +98,17 @@ export default async function StudentResultPage({ params }: StudentResultPagePro
     <main className="page-shell max-w-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{testTitle}</h1>
-        <Button asChild variant="outline">
-          <Link href="/student">Back</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <ShareResultButton
+            percentage={snapshot.score_percent}
+            rank={mine?.rank ?? null}
+            testTitle={testTitle}
+            totalStudents={mine ? ranked.length : null}
+          />
+          <Button asChild variant="outline">
+            <Link href="/student">Back</Link>
+          </Button>
+        </div>
       </div>
 
       <Card className="border-primary/30">

@@ -2,7 +2,7 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-06** (results & ranks, WhatsApp delivery, practice mode — see [Recent changes](#recent-changes-2026-07-06-results-ranks-whatsapp-practice)).
+**Last updated: 2026-07-07** (direction-first dashboards — see [Recent changes](#recent-changes-2026-07-07-direction-first-dashboards)).
 
 ## What this project is
 
@@ -45,6 +45,14 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code path) + onboarding · teacher batch management (create, invite code with copy-to-clipboard, manual add by phone, remove, roster with avatar stack) · question papers (AI-generate, key-free PDF extraction via `lib/extract.ts` + `unpdf`, review/edit with an answer-key paste box, save) · tests (schedule with a keyless-MCQ answer-key guard, student take via safe RPC, live countdown) · grading (MCQ auto-score server-side, subjective AI-suggest + teacher approval) · progress snapshots + dashboards (both roles, animated topic bars) · single-turn AI doubt solving · profile page (view/edit name + phone) · top nav with role-aware links and a profile menu. Consistent pending/error states across all forms and AI actions. Unit tests pass (`pnpm test`, 20/20) — pure scoring helpers (including `findKeylessMcqs`), a full mixed multi-topic `buildProgressSnapshot`, the `lib/ai.ts` mock outputs, and the `lib/extract.ts` PDF-parsing heuristics (verified against a real 25-question uploaded PDF, not just synthetic fixtures). A manual full-cycle E2E script lives in `MANUAL_E2E.md`; a demo-data seed script lives in `scripts/seed-demo.ts`.
 
 A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with the migration applied — currently used for local dev/demo, not yet deployed.
+
+## Recent changes (2026-07-07 direction-first dashboards)
+
+- **Student Tests section** — `/student/tests` (nav link) grouped Live now / Upcoming / Done with countdown chips; dashboard tests trimmed to the latest 4 + "All tests →".
+- **Student dashboard is now a "Today" view** — hero card resolves to one action (live test with ends-in timer → next test with starts-in timer → practice nudge); practice **day-streak chip** (`lib/streak.ts`, grace day, tested); score-trend **sparkline** (pure SVG `components/sparkline.tsx`, draw-in animation, reduced-motion safe).
+- **Teacher dashboard is a cockpit** — "Needs your attention" queue (ungraded submissions per test, keyless papers, live tests; max 4, each with an action link); **Reteach radar** (`lib/topics.ts`: marks-weighted 3 weakest topics, amber under 60%); batch-average trend sparkline.
+- **Share with parent** — student result page opens the student's own WhatsApp with a prefilled result message via phoneless `wa.me/?text=` (`buildStudentShareMessage`); parents are the payer — every good result becomes teacher marketing.
+- `TestCountdown` generalized (prefix/expired text) for "starts in" chips. Tests 29 → 36.
 
 ## Recent changes (2026-07-06 results, ranks, WhatsApp, practice)
 
