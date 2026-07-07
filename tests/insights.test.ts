@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { buildActivityCalendar } from "@/lib/activity";
 import { calcDayStreak } from "@/lib/streak";
 import { weakestTopics } from "@/lib/topics";
 import { buildStudentShareMessage, buildWaShareLink } from "@/lib/whatsapp";
@@ -21,6 +22,48 @@ describe("calcDayStreak", () => {
   it("breaks on a missed full day and handles empty input", () => {
     assert.equal(calcDayStreak([day(2), day(3)], now), 0); // last activity 2 days ago
     assert.equal(calcDayStreak([], now), 0);
+  });
+});
+
+describe("buildActivityCalendar", () => {
+  // 2026-07-07 is a Tuesday.
+  const now = new Date("2026-07-07T20:00:00");
+  const at = (daysAgo: number, hour = 10) =>
+    new Date(2026, 6, 7 - daysAgo, hour).toISOString();
+
+  it("builds a Monday-start grid ending on the current week's Sunday", () => {
+    const calendar = buildActivityCalendar([], 2, now);
+    assert.equal(calendar.weeks.length, 2);
+    assert.equal(calendar.weeks[0].length, 7);
+
+    const lastWeek = calendar.weeks[1];
+    assert.equal(new Date(lastWeek[0].date).getDay(), 1); // Monday
+    assert.equal(lastWeek[1].isToday, true); // Tuesday = today
+    assert.equal(lastWeek[2].isFuture, true); // Wednesday onward is future
+    assert.equal(lastWeek[6].isFuture, true);
+  });
+
+  it("counts events per day, flags test days, and tracks streaks", () => {
+    const calendar = buildActivityCalendar(
+      [
+        { at: at(0), kind: "practice" },
+        { at: at(0, 12), kind: "practice" },
+        { at: at(1), kind: "test" },
+        { at: at(1, 14), kind: "practice" },
+        // gap on day 2
+        { at: at(3), kind: "practice" }
+      ],
+      2,
+      now
+    );
+
+    const days = calendar.weeks.flat();
+    const today = days.find((day) => day.isToday)!;
+    assert.equal(today.count, 2);
+    const yesterday = days[days.indexOf(today) - 1];
+    assert.equal(yesterday.hasTest, true);
+    assert.equal(calendar.activeDays, 3);
+    assert.equal(calendar.longestStreak, 2); // yesterday + today; gap breaks the run
   });
 });
 

@@ -53,6 +53,7 @@ A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with 
 - **Teacher dashboard is a cockpit** — "Needs your attention" queue (ungraded submissions per test, keyless papers, live tests; max 4, each with an action link); **Reteach radar** (`lib/topics.ts`: marks-weighted 3 weakest topics, amber under 60%); batch-average trend sparkline.
 - **Share with parent** — student result page opens the student's own WhatsApp with a prefilled result message via phoneless `wa.me/?text=` (`buildStudentShareMessage`); parents are the payer — every good result becomes teacher marketing.
 - `TestCountdown` generalized (prefix/expired text) for "starts in" chips. Tests 29 → 36.
+- **Activity heatmap (same day)** — LeetCode-style 12-week Monday-start calendar on the student dashboard (`lib/activity.ts` pure + tested, `components/activity-heatmap.tsx`): green teal intensity for practice answers + tests taken (test days get an amber outline), current-streak chip and best-run stat folded in (greeting chip removed — one source of truth). Sits as the right half of a hero/activity two-column band; ambient by design, never the page's focus. Tests 36 → 38.
 
 ## Recent changes (2026-07-06 results, ranks, WhatsApp, practice)
 

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ClipboardList, Dumbbell, Flame, PlusCircle } from "lucide-react";
+import { ClipboardList, Dumbbell, PlusCircle } from "lucide-react";
 
 import { joinBatchAction } from "@/app/actions";
+import { ActivityHeatmap } from "@/components/activity-heatmap";
 import { ResultReveal } from "@/components/result-reveal";
 import { Sparkline } from "@/components/sparkline";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,7 +12,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth";
-import { calcDayStreak } from "@/lib/streak";
+import type { ActivityEvent } from "@/lib/activity";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
 import type { Json } from "@/types/database";
@@ -40,6 +41,7 @@ type TestRow = {
 type SubmissionRow = {
   test_id: string;
   status: "pending" | "graded";
+  submitted_at: string | null;
 };
 
 type ProgressRow = {
@@ -67,7 +69,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       .from("tests")
       .select("id,title,scheduled_at,duration_minutes,batches(name)")
       .order("scheduled_at", { ascending: false }),
-    supabase.from("test_submissions").select("test_id,status"),
+    supabase.from("test_submissions").select("test_id,status,submitted_at"),
     supabase
       .from("progress_snapshots")
       .select("id,test_id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
@@ -112,22 +114,19 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     : (tests
         .filter((test) => !submittedByTest.has(test.id) && new Date(test.scheduled_at).getTime() > now)
         .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null);
-  const streak = calcDayStreak((attemptData ?? []).map((row) => row.created_at as string));
   const trendValues = [...progress].reverse().map((snapshot) => snapshot.score_percent);
+  const activityEvents: ActivityEvent[] = [
+    ...(attemptData ?? []).map((row) => ({ at: row.created_at as string, kind: "practice" as const })),
+    ...submissions
+      .filter((row) => row.submitted_at)
+      .map((row) => ({ at: row.submitted_at as string, kind: "test" as const }))
+  ];
 
   return (
     <main className="page-shell">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="script-note text-lg">Namaskar,</p>
-          <h1 className="text-3xl font-semibold">{firstName}</h1>
-        </div>
-        {streak > 0 ? (
-          <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-secondary/50 px-3 py-1.5 text-sm font-medium text-primary">
-            <Flame className="h-4 w-4" aria-hidden="true" />
-            {streak}-day practice streak
-          </span>
-        ) : null}
+      <div>
+        <p className="script-note text-lg">Namaskar,</p>
+        <h1 className="text-3xl font-semibold">{firstName}</h1>
       </div>
 
       {searchParams?.error ? (
@@ -146,8 +145,10 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       ) : null}
 
       {hasBatch ? (
-        liveTest ? (
-          <Card className="border-primary/40">
+      <div className="grid items-stretch gap-4 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+        {liveTest ? (
+          <Card className="h-full border-primary/40">
             <CardHeader>
               <div>
                 <p className="script-note">Right now —</p>
@@ -163,7 +164,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
             </Button>
           </Card>
         ) : nextTest ? (
-          <Card>
+          <Card className="h-full">
             <CardHeader>
               <div>
                 <p className="script-note">Up next —</p>
@@ -182,7 +183,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
             </Button>
           </Card>
         ) : (
-          <Card>
+          <Card className="h-full">
             <CardHeader>
               <div>
                 <p className="script-note">Nothing scheduled —</p>
@@ -196,7 +197,12 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               </Link>
             </Button>
           </Card>
-        )
+        )}
+        </div>
+        <div className="lg:col-span-2">
+          <ActivityHeatmap events={activityEvents} />
+        </div>
+      </div>
       ) : null}
 
       {hasBatch ? (
