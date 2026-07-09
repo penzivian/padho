@@ -148,27 +148,34 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       <div className="grid items-stretch gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
         {liveTest ? (
-          <Card className="h-full border-primary/40">
+          <Card className="h-full border-primary/50 bg-[#eef7f5]">
             <CardHeader>
               <div>
-                <p className="script-note">Right now —</p>
-                <CardTitle className="text-xl">{liveTest.title}</CardTitle>
+                <p className="font-mono text-xs font-semibold uppercase tracking-widest text-primary">
+                  Live now
+                </p>
+                <CardTitle className="mt-1 text-2xl">{liveTest.title}</CardTitle>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {liveTest.batches?.name ?? "Your batch"} · {liveTest.duration_minutes} min
+                </p>
               </div>
               <TestCountdown
                 endsAt={new Date(endOf(liveTest)).toISOString()}
-                prefix="ends in "
+                prefix="ends "
               />
             </CardHeader>
-            <Button asChild>
-              <Link href={`/student/tests/${liveTest.id}`}>Take the test</Link>
+            <Button asChild className="h-12 w-full">
+              <Link href={`/student/tests/${liveTest.id}`}>Take the test →</Link>
             </Button>
           </Card>
         ) : nextTest ? (
           <Card className="h-full">
             <CardHeader>
               <div>
-                <p className="script-note">Up next —</p>
-                <CardTitle className="text-xl">{nextTest.title}</CardTitle>
+                <p className="font-mono text-xs font-semibold uppercase tracking-widest text-[#c98a3c]">
+                  Up next
+                </p>
+                <CardTitle className="mt-1 text-2xl">{nextTest.title}</CardTitle>
               </div>
               <TestCountdown endsAt={nextTest.scheduled_at} prefix="starts in " expiredText="live now" />
             </CardHeader>
@@ -206,25 +213,25 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       ) : null}
 
       {hasBatch ? (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-4">
           <Card>
-            <p className="font-serif text-4xl font-semibold">{memberships.length}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Batches</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Batches</p>
+            <p className="mt-1 font-serif text-4xl font-semibold">{memberships.length}</p>
           </Card>
           <Card>
-            <p className="font-serif text-4xl font-semibold">{openTests}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Open tests</p>
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Open tests</p>
+            <p className="mt-1 font-serif text-4xl font-semibold">{openTests}</p>
           </Card>
           <Card>
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-serif text-4xl font-semibold">
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              {trendValues.length >= 2 ? "Score trend" : "Avg score"}
+            </p>
+            <div className="mt-1 flex items-end justify-between gap-2">
+              <p className="font-serif text-4xl font-semibold text-primary">
                 {averageScore !== null ? `${averageScore}%` : "—"}
               </p>
-              <Sparkline className="mt-1" values={trendValues} />
+              <Sparkline className="hidden sm:block" values={trendValues} />
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {trendValues.length >= 2 ? "Score trend" : "Average score"}
-            </p>
           </Card>
         </div>
       ) : null}
@@ -325,13 +332,19 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
 
       {hasBatch ? (
       <section className="grid gap-4">
-        <h2 className="text-lg font-semibold">Progress</h2>
+        <h2 className="text-lg font-semibold">Recent results</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {progress.map((snapshot) => (
             <Card key={snapshot.id}>
               <CardHeader>
                 <CardTitle>{snapshot.tests?.title ?? "Test"}</CardTitle>
-                <span className="rounded-full bg-secondary px-2.5 py-0.5 font-serif text-sm font-semibold text-secondary-foreground">
+                <span
+                  className={
+                    snapshot.score_percent >= 75
+                      ? "rounded-full bg-secondary px-2.5 py-0.5 font-serif text-sm font-semibold text-secondary-foreground"
+                      : "rounded-full bg-[#f6e9d3] px-2.5 py-0.5 font-serif text-sm font-semibold text-[#8a5a1f]"
+                  }
+                >
                   {snapshot.score_percent}%
                 </span>
               </CardHeader>

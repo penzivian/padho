@@ -4,13 +4,7 @@ import { signOutAction } from "@/app/actions";
 import { NavLinks } from "@/components/nav-links";
 import { ProfileMenu } from "@/components/profile-menu";
 import { getCurrentProfile } from "@/lib/auth";
-
-const TEACHER_LINKS = [
-  { href: "/teacher", label: "Dashboard" },
-  { href: "/teacher/batches", label: "Batches" },
-  { href: "/teacher/papers", label: "Papers" },
-  { href: "/teacher/tests", label: "Tests" }
-];
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const STUDENT_LINKS = [
   { href: "/student", label: "Dashboard" },
@@ -24,26 +18,54 @@ export async function AppNav() {
   if (!session?.user) return null;
 
   const { user, profile } = session;
-  const links = profile ? (profile.role === "teacher" ? TEACHER_LINKS : STUDENT_LINKS) : [];
+
+  let links: { href: string; label: string; badge?: number }[] = [];
+  if (profile?.role === "teacher") {
+    const supabase = createSupabaseServerClient();
+    const { count: toGrade } = await supabase
+      .from("test_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending");
+    links = [
+      { href: "/teacher", label: "Dashboard" },
+      { href: "/teacher/batches", label: "Batches" },
+      { href: "/teacher/papers", label: "Papers" },
+      { href: "/teacher/tests", label: "Tests", badge: toGrade ?? 0 }
+    ];
+  } else if (profile) {
+    links = STUDENT_LINKS;
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur">
       <nav className="mx-auto flex min-h-14 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-5">
-          <Link href="/" className="font-serif text-xl font-bold text-primary">
-            Padho.
+        <div className="flex items-center gap-4">
+          <Link className="flex items-center gap-2" href="/">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-serif text-lg font-semibold text-primary-foreground">
+              प
+            </span>
+            <span className="font-serif text-xl font-bold text-primary">Padho.</span>
           </Link>
+          <span className="hidden rounded-full border px-2.5 py-0.5 font-mono text-xs text-muted-foreground md:inline">
+            Agartala · Phase 0
+          </span>
           <div className="no-scrollbar flex items-center gap-1 overflow-x-auto text-sm">
             <NavLinks links={links} />
           </div>
         </div>
 
         {profile ? (
-          <ProfileMenu
-            fullName={profile.full_name}
-            role={profile.role}
-            contact={user.email ?? profile.phone ?? ""}
-          />
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold leading-tight">{profile.full_name}</p>
+              <p className="text-xs capitalize text-muted-foreground">{profile.role} · Padho</p>
+            </div>
+            <ProfileMenu
+              fullName={profile.full_name}
+              role={profile.role}
+              contact={user.email ?? profile.phone ?? ""}
+            />
+          </div>
         ) : (
           <form action={signOutAction}>
             <button className="rounded-md px-3 py-1.5 text-sm hover:bg-muted" type="submit">

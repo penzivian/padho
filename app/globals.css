@@ -4,22 +4,23 @@
 
 @layer base {
   :root {
-    /* Calm Ledger: cream paper, deep teal-green ink, warm sand accents */
-    --background: 45 33% 96%;
-    --foreground: 172 20% 14%;
-    --card: 46 42% 98%;
-    --card-foreground: 172 20% 14%;
-    --primary: 170 55% 24%;
-    --primary-foreground: 45 40% 98%;
-    --secondary: 168 30% 88%;
-    --secondary-foreground: 170 35% 18%;
-    --muted: 43 30% 90%;
-    --muted-foreground: 40 8% 40%;
-    --destructive: 0 72% 46%;
+    /* Calm Ledger v2 (from the design prototype): warm paper cards on a sage
+       gradient, deep teal ink #1a6b63, sand borders, ochre accents. */
+    --background: 73 23% 92%; /* #eef0e7 — gradient start, solid fallback */
+    --foreground: 42 14% 15%; /* #2a2720 */
+    --card: 43 100% 99%; /* #fffdf8 */
+    --card-foreground: 42 14% 15%;
+    --primary: 174 61% 26%; /* #1a6b63 */
+    --primary-foreground: 43 100% 99%;
+    --secondary: 168 27% 89%; /* #dcebe8 */
+    --secondary-foreground: 174 62% 20%; /* #14544e */
+    --muted: 43 44% 89%; /* #efe8d6 */
+    --muted-foreground: 38 13% 39%; /* #6f6656 */
+    --destructive: 8 51% 52%; /* #c65a45 — terracotta, softer than pure red */
     --destructive-foreground: 0 0% 100%;
-    --border: 43 24% 84%;
-    --input: 43 24% 78%;
-    --ring: 170 55% 30%;
+    --border: 43 32% 85%; /* #e6dfce */
+    --input: 42 31% 78%;
+    --ring: 174 61% 30%;
   }
 
   * {
@@ -28,6 +29,9 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    background-image: linear-gradient(180deg, #eef0e7 0%, #d3ded8 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 
   h1,

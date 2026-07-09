@@ -1,14 +1,26 @@
 import type { Metadata } from "next";
-import { Caveat, Fraunces } from "next/font/google";
+import { Caveat, IBM_Plex_Mono, Public_Sans, Spectral } from "next/font/google";
 
 import { AppNav } from "@/components/app-nav";
 
 import "./globals.css";
 
-const fraunces = Fraunces({
+const spectral = Spectral({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["500", "600", "700"],
   variable: "--font-serif"
+});
+
+const publicSans = Public_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans"
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["500"],
+  variable: "--font-mono"
 });
 
 const caveat = Caveat({
@@ -25,7 +37,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${fraunces.variable} ${caveat.variable}`}>
+      <body
+        className={`${spectral.variable} ${publicSans.variable} ${plexMono.variable} ${caveat.variable} font-sans`}
+      >
         <AppNav />
         {children}
       </body>

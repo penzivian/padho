@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prototype-static",
+      "runtimeExecutable": "/Users/supratimdeb/.local/nodetool/node-v24.14.0-darwin-arm64/bin/node",
+      "runtimeArgs": ["scripts/serve-prototype.mjs"],
+      "port": 8787
+    }
+  ]
+}

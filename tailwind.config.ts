@@ -38,7 +38,9 @@ const config: Config = {
         sm: "0.375rem"
       },
       fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Georgia", "serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
         script: ["var(--font-script)", "cursive"]
       }
     }

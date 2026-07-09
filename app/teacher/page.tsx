@@ -1,33 +1,60 @@
 import Link from "next/link";
-import { AlertCircle, BookOpenCheck, CheckCircle2, Circle, ClipboardList, UsersRound } from "lucide-react";
+import { CheckCircle2, Circle, Sparkles } from "lucide-react";
 
+import { CopyChip } from "@/components/copy-chip";
 import { Sparkline } from "@/components/sparkline";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
+import { optionalEnv } from "@/lib/env";
 import { findKeylessMcqs } from "@/lib/grading";
 import { weakestTopics } from "@/lib/topics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { timeAgo } from "@/lib/utils";
 import type { Json } from "@/types/database";
 
+type BatchRow = {
+  id: string;
+  name: string;
+  exam_target: string;
+  invite_code: string;
+  batch_students: { count: number }[];
+};
+
+type ActivityItem = {
+  tone: "action" | "event" | "join";
+  text: string;
+  href?: string;
+  action?: string;
+  at?: string;
+};
+
 export default async function TeacherHomePage() {
-  const { profile } = await requireProfile("teacher");
+  const { user, profile } = await requireProfile("teacher");
   const supabase = createSupabaseServerClient();
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
   const [
-    { count: batchCount },
     { count: paperCount },
     { count: testCount },
+    { count: studentCount },
     { count: submissionCount },
     { count: gradedCount },
     { count: practiceCount },
+    { count: aiUsedCount },
     { data: snapshotData },
     { data: pendingData },
     { data: paperData },
-    { data: liveTestData }
+    { data: liveTestData },
+    { data: batchData },
+    { data: recentSubmissionData },
+    { data: recentJoinData }
   ] = await Promise.all([
-    supabase.from("batches").select("id", { count: "exact", head: true }),
     supabase.from("question_papers").select("id", { count: "exact", head: true }),
     supabase.from("tests").select("id", { count: "exact", head: true }),
+    supabase.from("batch_students").select("student_id", { count: "exact", head: true }),
     supabase.from("test_submissions").select("id", { count: "exact", head: true }),
     supabase.from("test_submissions").select("id", { count: "exact", head: true }).eq("status", "graded"),
     supabase
@@ -35,8 +62,13 @@ export default async function TeacherHomePage() {
       .select("id", { count: "exact", head: true })
       .gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
     supabase
+      .from("ai_usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_teacher_id", user.id)
+      .gte("created_at", monthStart.toISOString()),
+    supabase
       .from("progress_snapshots")
-      .select("student_id,score_percent,created_at,topic_breakdown")
+      .select("student_id,batch_id,score_percent,created_at,topic_breakdown")
       .order("created_at", { ascending: true }),
     supabase.from("test_submissions").select("id,tests(id,title)").eq("status", "pending"),
     supabase.from("question_papers").select("id,title,questions(question_type,correct_answer)"),
@@ -44,19 +76,48 @@ export default async function TeacherHomePage() {
       .from("tests")
       .select("id,title,scheduled_at,duration_minutes")
       .eq("status", "scheduled")
-      .lte("scheduled_at", new Date().toISOString())
+      .lte("scheduled_at", new Date().toISOString()),
+    supabase
+      .from("batches")
+      .select("id,name,exam_target,invite_code,batch_students(count)")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("test_submissions")
+      .select("submitted_at,profiles(full_name),tests(title)")
+      .not("submitted_at", "is", null)
+      .order("submitted_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("batch_students")
+      .select("joined_at,profiles(full_name),batches(name)")
+      .order("joined_at", { ascending: false })
+      .limit(3)
   ]);
 
+  const batches = (batchData ?? []) as unknown as BatchRow[];
+  const batchCount = batches.length;
+  const pendingCount = (submissionCount ?? 0) - (gradedCount ?? 0);
   const firstName = profile.full_name.split(/\s+/)[0] || "teacher";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning," : hour < 17 ? "Good afternoon," : "Good evening,";
+
   const steps = [
-    { label: "Create your first batch", hint: "Students join with its invite code", href: "/teacher/batches", done: (batchCount ?? 0) > 0 },
+    { label: "Create your first batch", hint: "Students join with its invite code", href: "/teacher/batches", done: batchCount > 0 },
     { label: "Build a question paper", hint: "Draft with AI or upload a PDF", href: "/teacher/papers/new", done: (paperCount ?? 0) > 0 },
     { label: "Schedule a test", hint: "Students take it live; MCQs auto-score", href: "/teacher/tests", done: (testCount ?? 0) > 0 }
   ];
   const setupDone = steps.every((step) => step.done);
-  const improvement = improvementStats(snapshotData ?? []);
 
-  // Needs-attention queue: grading waiting, keyless papers, tests live right now.
+  // Per-batch average score from snapshots.
+  const batchAverages = new Map<string, { sum: number; count: number }>();
+  for (const snapshot of snapshotData ?? []) {
+    const entry = batchAverages.get(snapshot.batch_id) ?? { sum: 0, count: 0 };
+    entry.sum += snapshot.score_percent;
+    entry.count += 1;
+    batchAverages.set(snapshot.batch_id, entry);
+  }
+
+  // Activity feed: actionable items first, then recent events.
   const pendingByTest = new Map<string, { title: string; count: number }>();
   for (const row of (pendingData ?? []) as unknown as { tests: { id: string; title: string } | null }[]) {
     if (!row.tests) continue;
@@ -73,35 +134,59 @@ export default async function TeacherHomePage() {
   ).filter(
     (paper) =>
       findKeylessMcqs(
-        paper.questions.map((question) => ({
-          type: question.question_type,
-          correctAnswer: question.correct_answer
-        }))
+        paper.questions.map((question) => ({ type: question.question_type, correctAnswer: question.correct_answer }))
       ).length > 0
   );
   const nowMs = Date.now();
-  const liveTests = ((liveTestData ?? []) as { id: string; title: string; scheduled_at: string; duration_minutes: number }[]).filter(
-    (test) => nowMs <= new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000
-  );
-  const attention: { text: string; href: string; action: string }[] = [
+  const liveTests = (
+    (liveTestData ?? []) as { id: string; title: string; scheduled_at: string; duration_minutes: number }[]
+  ).filter((test) => nowMs <= new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000);
+
+  const actions: ActivityItem[] = [
     ...[...pendingByTest.entries()].map(([id, entry]) => ({
-      text: `${entry.count} submission${entry.count === 1 ? "" : "s"} waiting in ${entry.title}`,
+      tone: "action" as const,
+      text: `${entry.count} answer${entry.count === 1 ? "" : "s"} need grading in ${entry.title}`,
       href: `/teacher/tests/${id}/grading`,
       action: "Grade"
     })),
     ...keylessPapers.map((paper) => ({
+      tone: "action" as const,
       text: `${paper.title} has MCQs without answer keys`,
       href: "/teacher/papers",
       action: "Fix"
     })),
     ...liveTests.map((test) => ({
+      tone: "action" as const,
       text: `${test.title} is live right now`,
       href: `/teacher/tests/${test.id}/results`,
       action: "Watch"
     }))
-  ].slice(0, 4);
+  ].slice(0, 3);
 
-  // Batch trend: average score per calendar day of graded snapshots, oldest → newest.
+  const events: ActivityItem[] = [
+    ...((recentSubmissionData ?? []) as unknown as {
+      submitted_at: string;
+      profiles: { full_name: string } | null;
+      tests: { title: string } | null;
+    }[]).map((row) => ({
+      tone: "event" as const,
+      text: `${row.profiles?.full_name ?? "A student"} submitted ${row.tests?.title ?? "a test"}`,
+      at: row.submitted_at
+    })),
+    ...((recentJoinData ?? []) as unknown as {
+      joined_at: string;
+      profiles: { full_name: string } | null;
+      batches: { name: string } | null;
+    }[]).map((row) => ({
+      tone: "join" as const,
+      text: `${row.profiles?.full_name ?? "A student"} joined ${row.batches?.name ?? "a batch"}`,
+      at: row.joined_at
+    }))
+  ]
+    .sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime())
+    .slice(0, 5);
+
+  // Batch trend + reteach radar from snapshots.
   const byDay = new Map<string, { sum: number; count: number }>();
   for (const snapshot of snapshotData ?? []) {
     const key = new Date(snapshot.created_at).toDateString();
@@ -112,16 +197,26 @@ export default async function TeacherHomePage() {
   }
   const trend = [...byDay.values()].map((entry) => Math.round(entry.sum / entry.count));
   const weakest = weakestTopics(
-    ((snapshotData ?? []) as unknown as { topic_breakdown: Json }[]).map(
-      (snapshot) => snapshot.topic_breakdown
-    )
+    ((snapshotData ?? []) as unknown as { topic_breakdown: Json }[]).map((snapshot) => snapshot.topic_breakdown)
   );
+  const improvement = improvementStats(snapshotData ?? []);
+
+  const aiLimit = Number(optionalEnv("AI_MONTHLY_TEACHER_LIMIT", "200"));
+  const aiLeft = Math.max(0, aiLimit - (aiUsedCount ?? 0));
 
   return (
     <main className="page-shell">
-      <div>
-        <p className="script-note text-lg">Namaskar,</p>
-        <h1 className="text-3xl font-semibold">{firstName}</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="script-note text-lg text-[#c98a3c]">{greeting}</p>
+          <h1 className="text-3xl font-semibold">{firstName}</h1>
+        </div>
+        <Button asChild>
+          <Link href="/teacher/papers/new">
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            New paper
+          </Link>
+        </Button>
       </div>
 
       {!setupDone ? (
@@ -158,26 +253,17 @@ export default async function TeacherHomePage() {
         </Card>
       ) : null}
 
-      {attention.length > 0 ? (
-        <Card className="border-amber-600/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertCircle className="h-5 w-5 text-amber-700" aria-hidden="true" />
-              Needs your attention
-            </CardTitle>
-          </CardHeader>
-          <ul className="grid gap-2">
-            {attention.map((item) => (
-              <li key={item.text} className="flex items-center justify-between gap-3 text-sm">
-                <span>{item.text}</span>
-                <Button asChild size="sm" variant="outline">
-                  <Link href={item.href}>{item.action}</Link>
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard href="/teacher/batches" label="Batches" value={batchCount} />
+        <StatCard href="/teacher/batches" label="Students" value={studentCount ?? 0} />
+        <StatCard href="/teacher/papers" label="Papers" value={paperCount ?? 0} />
+        <StatCard
+          href="/teacher/tests"
+          label="To grade"
+          value={pendingCount}
+          highlight={pendingCount > 0}
+        />
+      </div>
 
       {(submissionCount ?? 0) > 0 ? (
         <div className="rounded-lg border bg-secondary/40 px-4 py-3">
@@ -208,11 +294,112 @@ export default async function TeacherHomePage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard href="/teacher/batches" icon={<UsersRound className="h-5 w-5" />} label="Batches" value={batchCount ?? 0} />
-        <StatCard href="/teacher/papers" icon={<BookOpenCheck className="h-5 w-5" />} label="Papers" value={paperCount ?? 0} />
-        <StatCard href="/teacher/tests" icon={<ClipboardList className="h-5 w-5" />} label="Tests" value={testCount ?? 0} />
-      </div>
+      {setupDone ? (
+        <div className="grid items-start gap-4 lg:grid-cols-5">
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Your batches</CardTitle>
+              <Button asChild size="sm" variant="ghost">
+                <Link href="/teacher/batches">View all →</Link>
+              </Button>
+            </CardHeader>
+            <div className="grid gap-3">
+              {batches.slice(0, 4).map((batch) => {
+                const average = batchAverages.get(batch.id);
+                const percent = average ? Math.round(average.sum / average.count) : null;
+                const studentTotal = batch.batch_students[0]?.count ?? 0;
+
+                return (
+                  <div key={batch.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-serif text-base font-semibold">{batch.name}</p>
+                      <CopyChip value={batch.invite_code} />
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {batch.exam_target} · {studentTotal} {studentTotal === 1 ? "student" : "students"}
+                    </p>
+                    {percent !== null ? (
+                      <div className="mt-2 flex items-center gap-3">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={
+                              percent >= 60
+                                ? "bar-animate h-full rounded-full bg-primary"
+                                : "bar-animate h-full rounded-full bg-[#c98a3c]"
+                            }
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <span className="font-serif text-sm font-semibold">{percent}%</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {batches.length === 0 ? <p className="script-note">No batches yet.</p> : null}
+            </div>
+          </Card>
+
+          <div className="grid gap-4 lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent activity</CardTitle>
+              </CardHeader>
+              <ul className="grid gap-2.5 text-sm">
+                {actions.map((item) => (
+                  <li key={item.text} className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#c98a3c]" />
+                      <span className="truncate">{item.text}</span>
+                    </span>
+                    {item.href ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={item.href}>{item.action}</Link>
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+                {events.map((item) => (
+                  <li key={`${item.text}-${item.at}`} className="flex items-start gap-2">
+                    <span
+                      className={
+                        item.tone === "event"
+                          ? "mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary/60"
+                          : "mt-1.5 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
+                      }
+                    />
+                    <span>
+                      {item.text}
+                      {item.at ? (
+                        <span className="block font-mono text-xs text-muted-foreground">{timeAgo(item.at)}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+                {actions.length === 0 && events.length === 0 ? (
+                  <p className="script-note">All quiet — activity shows up here.</p>
+                ) : null}
+              </ul>
+            </Card>
+
+            <Card>
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+                AI credits
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {aiLeft} of {aiLimit} left this month
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="bar-animate h-full rounded-full bg-primary"
+                  style={{ width: `${Math.min(100, (aiLeft / aiLimit) * 100)}%` }}
+                />
+              </div>
+            </Card>
+          </div>
+        </div>
+      ) : null}
 
       {weakest.length > 0 || trend.length >= 2 ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -231,7 +418,7 @@ export default async function TeacherHomePage() {
                       <span>{topic.topic}</span>
                       <span
                         className={
-                          topic.percent < 60 ? "font-serif font-semibold text-amber-700" : "font-serif font-semibold"
+                          topic.percent < 60 ? "font-serif font-semibold text-[#c98a3c]" : "font-serif font-semibold"
                         }
                       >
                         {topic.percent}%
@@ -241,7 +428,7 @@ export default async function TeacherHomePage() {
                       <div
                         className={
                           topic.percent < 60
-                            ? "bar-animate h-full rounded-full bg-amber-500"
+                            ? "bar-animate h-full rounded-full bg-[#c98a3c]"
                             : "bar-animate h-full rounded-full bg-primary"
                         }
                         style={{ width: `${topic.percent}%` }}
@@ -261,20 +448,12 @@ export default async function TeacherHomePage() {
                 </div>
               </CardHeader>
               <div className="flex items-end justify-between gap-3">
-                <p className="font-serif text-4xl font-semibold">{trend[trend.length - 1]}%</p>
+                <p className="font-serif text-4xl font-semibold text-primary">{trend[trend.length - 1]}%</p>
                 <Sparkline className="h-12 w-40" values={trend} />
               </div>
             </Card>
           ) : null}
         </div>
-      ) : null}
-
-      {setupDone ? (
-        <section className="grid gap-3 sm:grid-cols-3">
-          <QuickAction href="/teacher/papers/new" title="Create paper" hint="AI draft or upload a PDF" primary />
-          <QuickAction href="/teacher/tests" title="Schedule test" hint="From any saved paper" />
-          <QuickAction href="/teacher/batches" title="Manage batches" hint="Roster and invite codes" />
-        </section>
       ) : null}
     </main>
   );
@@ -304,52 +483,35 @@ function formatGradingTime(gradedSubmissions: number) {
 
 function StatCard({
   href,
-  icon,
   label,
-  value
+  value,
+  highlight = false
 }: {
   href: string;
-  icon: React.ReactNode;
   label: string;
   value: number;
+  highlight?: boolean;
 }) {
   return (
     <Link href={href}>
-      <Card className="transition hover:border-primary/40 hover:bg-secondary/30">
-        <p className="font-serif text-4xl font-semibold">{value}</p>
-        <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="text-primary">{icon}</span>
+      <Card
+        className={
+          highlight
+            ? "border-primary bg-primary text-primary-foreground transition hover:bg-primary/90"
+            : "transition hover:border-primary/40 hover:bg-secondary/30"
+        }
+      >
+        <p
+          className={
+            highlight
+              ? "font-mono text-xs uppercase tracking-widest text-primary-foreground/70"
+              : "font-mono text-xs uppercase tracking-widest text-muted-foreground"
+          }
+        >
           {label}
         </p>
+        <p className="mt-1 font-serif text-4xl font-semibold">{value}</p>
       </Card>
-    </Link>
-  );
-}
-
-function QuickAction({
-  href,
-  title,
-  hint,
-  primary = false
-}: {
-  href: string;
-  title: string;
-  hint: string;
-  primary?: boolean;
-}) {
-  return (
-    <Link
-      className={
-        primary
-          ? "rounded-lg bg-primary p-4 text-primary-foreground shadow-sm transition hover:bg-primary/90"
-          : "rounded-lg border bg-card p-4 shadow-sm transition hover:border-primary/40 hover:bg-secondary/30"
-      }
-      href={href}
-    >
-      <p className="font-medium">{title}</p>
-      <p className={primary ? "mt-0.5 text-sm text-primary-foreground/75" : "mt-0.5 text-sm text-muted-foreground"}>
-        {hint}
-      </p>
     </Link>
   );
 }
