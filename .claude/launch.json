@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "padho-dev",
+      "runtimeExecutable": "/Users/supratimdeb/.local/nodetool/node-v24.14.0-darwin-arm64/bin/node",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "port": 3000
+    },
+    {
       "name": "prototype-static",
       "runtimeExecutable": "/Users/supratimdeb/.local/nodetool/node-v24.14.0-darwin-arm64/bin/node",
       "runtimeArgs": ["scripts/serve-prototype.mjs"],

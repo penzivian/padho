@@ -145,7 +145,7 @@ export default async function TeacherHomePage() {
   const actions: ActivityItem[] = [
     ...[...pendingByTest.entries()].map(([id, entry]) => ({
       tone: "action" as const,
-      text: `${entry.count} answer${entry.count === 1 ? "" : "s"} need grading in ${entry.title}`,
+      text: `${entry.count} answer${entry.count === 1 ? " needs" : "s need"} grading in ${entry.title}`,
       href: `/teacher/tests/${id}/grading`,
       action: "Grade"
     })),
