@@ -2,7 +2,7 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-07** (direction-first dashboards — see [Recent changes](#recent-changes-2026-07-07-direction-first-dashboards)).
+**Last updated: 2026-07-08** (Calm Ledger v2 visual refresh from the owner's design prototype — see [Recent changes](#recent-changes-2026-07-08-calm-ledger-v2)).
 
 ## What this project is
 
@@ -45,6 +45,14 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code path) + onboarding · teacher batch management (create, invite code with copy-to-clipboard, manual add by phone, remove, roster with avatar stack) · question papers (AI-generate, key-free PDF extraction via `lib/extract.ts` + `unpdf`, review/edit with an answer-key paste box, save) · tests (schedule with a keyless-MCQ answer-key guard, student take via safe RPC, live countdown) · grading (MCQ auto-score server-side, subjective AI-suggest + teacher approval) · progress snapshots + dashboards (both roles, animated topic bars) · single-turn AI doubt solving · profile page (view/edit name + phone) · top nav with role-aware links and a profile menu. Consistent pending/error states across all forms and AI actions. Unit tests pass (`pnpm test`, 20/20) — pure scoring helpers (including `findKeylessMcqs`), a full mixed multi-topic `buildProgressSnapshot`, the `lib/ai.ts` mock outputs, and the `lib/extract.ts` PDF-parsing heuristics (verified against a real 25-question uploaded PDF, not just synthetic fixtures). A manual full-cycle E2E script lives in `MANUAL_E2E.md`; a demo-data seed script lives in `scripts/seed-demo.ts`.
 
 A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with the migration applied — currently used for local dev/demo, not yet deployed.
+
+## Recent changes (2026-07-08 Calm Ledger v2)
+
+- **Visual refresh from the owner's Claude Design prototype** (`prototype/`, gitignored): fonts now Spectral (serif) / Public Sans (body) / IBM Plex Mono (chips, stat labels); exact prototype palette (`#1a6b63` teal, `#fffdf8` paper cards, `#e6dfce` sand borders, `#c98a3c` ochre accents, terracotta destructive); **sage gradient page background** (`#eef0e7 → #d3ded8`, fixed).
+- **Header**: प brand mark, "Agartala · Phase 0" mono chip, name + role block beside the avatar, and a terracotta **to-grade count badge** on the teacher's Tests link (count query in `AppNav`).
+- **Teacher dashboard** rebuilt to the prototype (top nav kept, sidebar deliberately not adopted): time-of-day script greeting, "✦ New paper" header primary, 4 uppercase-label stat cards (dark-filled **To grade**), "Your batches" rows (avg-score bar + copy chip) beside a **Recent activity feed** (action items with links first, then submissions/joins with `timeAgo`), and an **AI credits** meter fed by `ai_usage_events`.
+- **Student dashboard**: LIVE NOW hero (mono eyebrow, tinted card, full-width CTA), prototype-style stat cards (teal avg %), result chips colored by score band. The **12-week heatmap stays** (the prototype's 1-week strip is a mobile compromise; owner wants the LeetCode grid on web).
+- Verified end-to-end in the preview browser (auth → teacher cockpit → student dashboard). `.claude/launch.json` has `padho-dev` (Next dev) + `prototype-static` preview configs.
 
 ## Recent changes (2026-07-07 direction-first dashboards)
 
