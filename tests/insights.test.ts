@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { buildActivityCalendar } from "@/lib/activity";
+import { aggregatePractice, feedText, mergeFeed } from "@/lib/activity-feed";
 import { calcDayStreak } from "@/lib/streak";
 import { weakestTopics } from "@/lib/topics";
 import { buildStudentShareMessage, buildWaShareLink } from "@/lib/whatsapp";
@@ -64,6 +65,41 @@ describe("buildActivityCalendar", () => {
     assert.equal(yesterday.hasTest, true);
     assert.equal(calendar.activeDays, 3);
     assert.equal(calendar.longestStreak, 2); // yesterday + today; gap breaks the run
+  });
+});
+
+describe("activity feed", () => {
+  it("aggregates practice attempts per student per day, keeping the latest time", () => {
+    const events = aggregatePractice([
+      { at: "2026-07-08T10:00:00", actor: "Rahul" },
+      { at: "2026-07-08T11:30:00", actor: "Rahul" },
+      { at: "2026-07-07T09:00:00", actor: "Rahul" },
+      { at: "2026-07-08T10:15:00", actor: "Meera" }
+    ]);
+    assert.equal(events.length, 3); // Rahul×2 days + Meera×1
+
+    const rahulToday = events.find(
+      (event) =>
+        event.actor === "Rahul" &&
+        new Date(event.at).toDateString() === new Date("2026-07-08T11:30:00").toDateString()
+    )!;
+    assert.equal(rahulToday.count, 2);
+    assert.equal(rahulToday.at, "2026-07-08T11:30:00");
+  });
+
+  it("merges newest-first with an optional limit and labels events", () => {
+    const merged = mergeFeed(
+      [
+        { kind: "joined", actor: "Asha", detail: "XII Physics", at: "2026-07-01T00:00:00" },
+        { kind: "submitted", actor: "Bala", detail: "Weekly", at: "2026-07-08T00:00:00" },
+        { kind: "practiced", actor: "Dev", detail: "", count: 5, at: "2026-07-05T00:00:00" }
+      ],
+      2
+    );
+    assert.deepEqual(merged.map((event) => event.actor), ["Bala", "Dev"]);
+    assert.equal(feedText(merged[0]), "Bala submitted Weekly");
+    assert.equal(feedText(merged[1]), "Dev practiced 5 questions");
+    assert.equal(feedText({ kind: "practiced", actor: "X", detail: "", count: 1, at: "" }), "X practiced 1 question");
   });
 });
 

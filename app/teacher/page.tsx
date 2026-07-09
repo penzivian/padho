@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, Sparkles } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, Sparkles, UsersRound } from "lucide-react";
 
+import { ActivityFeedList } from "@/components/activity-feed-list";
 import { CopyChip } from "@/components/copy-chip";
 import { Sparkline } from "@/components/sparkline";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
-import { optionalEnv } from "@/lib/env";
 import { findKeylessMcqs } from "@/lib/grading";
+import { loadActivityEvents } from "@/lib/teacher-activity";
 import { weakestTopics } from "@/lib/topics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { timeAgo } from "@/lib/utils";
 import type { Json } from "@/types/database";
 
 type BatchRow = {
@@ -21,20 +21,9 @@ type BatchRow = {
   batch_students: { count: number }[];
 };
 
-type ActivityItem = {
-  tone: "action" | "event" | "join";
-  text: string;
-  href?: string;
-  action?: string;
-  at?: string;
-};
-
 export default async function TeacherHomePage() {
-  const { user, profile } = await requireProfile("teacher");
+  const { profile } = await requireProfile("teacher");
   const supabase = createSupabaseServerClient();
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
 
   const [
     { count: paperCount },
@@ -43,14 +32,12 @@ export default async function TeacherHomePage() {
     { count: submissionCount },
     { count: gradedCount },
     { count: practiceCount },
-    { count: aiUsedCount },
     { data: snapshotData },
     { data: pendingData },
     { data: paperData },
     { data: liveTestData },
     { data: batchData },
-    { data: recentSubmissionData },
-    { data: recentJoinData }
+    feedEvents
   ] = await Promise.all([
     supabase.from("question_papers").select("id", { count: "exact", head: true }),
     supabase.from("tests").select("id", { count: "exact", head: true }),
@@ -61,11 +48,6 @@ export default async function TeacherHomePage() {
       .from("practice_attempts")
       .select("id", { count: "exact", head: true })
       .gte("created_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
-    supabase
-      .from("ai_usage_events")
-      .select("id", { count: "exact", head: true })
-      .eq("owner_teacher_id", user.id)
-      .gte("created_at", monthStart.toISOString()),
     supabase
       .from("progress_snapshots")
       .select("student_id,batch_id,score_percent,created_at,topic_breakdown")
@@ -81,17 +63,7 @@ export default async function TeacherHomePage() {
       .from("batches")
       .select("id,name,exam_target,invite_code,batch_students(count)")
       .order("created_at", { ascending: false }),
-    supabase
-      .from("test_submissions")
-      .select("submitted_at,profiles(full_name),tests(title)")
-      .not("submitted_at", "is", null)
-      .order("submitted_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("batch_students")
-      .select("joined_at,profiles(full_name),batches(name)")
-      .order("joined_at", { ascending: false })
-      .limit(3)
+    loadActivityEvents(supabase)
   ]);
 
   const batches = (batchData ?? []) as unknown as BatchRow[];
@@ -108,7 +80,6 @@ export default async function TeacherHomePage() {
   ];
   const setupDone = steps.every((step) => step.done);
 
-  // Per-batch average score from snapshots.
   const batchAverages = new Map<string, { sum: number; count: number }>();
   for (const snapshot of snapshotData ?? []) {
     const entry = batchAverages.get(snapshot.batch_id) ?? { sum: 0, count: 0 };
@@ -117,7 +88,7 @@ export default async function TeacherHomePage() {
     batchAverages.set(snapshot.batch_id, entry);
   }
 
-  // Activity feed: actionable items first, then recent events.
+  // Actionable todos (distinct from the passive activity feed).
   const pendingByTest = new Map<string, { title: string; count: number }>();
   for (const row of (pendingData ?? []) as unknown as { tests: { id: string; title: string } | null }[]) {
     if (!row.tests) continue;
@@ -142,51 +113,24 @@ export default async function TeacherHomePage() {
     (liveTestData ?? []) as { id: string; title: string; scheduled_at: string; duration_minutes: number }[]
   ).filter((test) => nowMs <= new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000);
 
-  const actions: ActivityItem[] = [
+  const actions = [
     ...[...pendingByTest.entries()].map(([id, entry]) => ({
-      tone: "action" as const,
       text: `${entry.count} answer${entry.count === 1 ? " needs" : "s need"} grading in ${entry.title}`,
       href: `/teacher/tests/${id}/grading`,
       action: "Grade"
     })),
     ...keylessPapers.map((paper) => ({
-      tone: "action" as const,
       text: `${paper.title} has MCQs without answer keys`,
       href: "/teacher/papers",
       action: "Fix"
     })),
     ...liveTests.map((test) => ({
-      tone: "action" as const,
       text: `${test.title} is live right now`,
       href: `/teacher/tests/${test.id}/results`,
       action: "Watch"
     }))
   ].slice(0, 3);
 
-  const events: ActivityItem[] = [
-    ...((recentSubmissionData ?? []) as unknown as {
-      submitted_at: string;
-      profiles: { full_name: string } | null;
-      tests: { title: string } | null;
-    }[]).map((row) => ({
-      tone: "event" as const,
-      text: `${row.profiles?.full_name ?? "A student"} submitted ${row.tests?.title ?? "a test"}`,
-      at: row.submitted_at
-    })),
-    ...((recentJoinData ?? []) as unknown as {
-      joined_at: string;
-      profiles: { full_name: string } | null;
-      batches: { name: string } | null;
-    }[]).map((row) => ({
-      tone: "join" as const,
-      text: `${row.profiles?.full_name ?? "A student"} joined ${row.batches?.name ?? "a batch"}`,
-      at: row.joined_at
-    }))
-  ]
-    .sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime())
-    .slice(0, 5);
-
-  // Batch trend + reteach radar from snapshots.
   const byDay = new Map<string, { sum: number; count: number }>();
   for (const snapshot of snapshotData ?? []) {
     const key = new Date(snapshot.created_at).toDateString();
@@ -201,22 +145,33 @@ export default async function TeacherHomePage() {
   );
   const improvement = improvementStats(snapshotData ?? []);
 
-  const aiLimit = Number(optionalEnv("AI_MONTHLY_TEACHER_LIMIT", "200"));
-  const aiLeft = Math.max(0, aiLimit - (aiUsedCount ?? 0));
-
   return (
     <main className="page-shell">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="hero-gradient flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 shadow-sm">
         <div>
           <p className="script-note text-lg text-[#c98a3c]">{greeting}</p>
           <h1 className="text-3xl font-semibold">{firstName}</h1>
         </div>
-        <Button asChild>
-          <Link href="/teacher/papers/new">
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            New paper
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/teacher/batches">
+              <UsersRound className="h-4 w-4" aria-hidden="true" />
+              Create batch
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/teacher/tests">
+              <CalendarClock className="h-4 w-4" aria-hidden="true" />
+              Schedule test
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/teacher/papers/new">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              New paper
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {!setupDone ? (
@@ -257,16 +212,11 @@ export default async function TeacherHomePage() {
         <StatCard href="/teacher/batches" label="Batches" value={batchCount} />
         <StatCard href="/teacher/batches" label="Students" value={studentCount ?? 0} />
         <StatCard href="/teacher/papers" label="Papers" value={paperCount ?? 0} />
-        <StatCard
-          href="/teacher/tests"
-          label="To grade"
-          value={pendingCount}
-          highlight={pendingCount > 0}
-        />
+        <StatCard href="/teacher/tests" label="To grade" value={pendingCount} highlight={pendingCount > 0} />
       </div>
 
       {(submissionCount ?? 0) > 0 ? (
-        <div className="rounded-lg border bg-secondary/40 px-4 py-3">
+        <div className="surface-teal rounded-lg border px-4 py-3">
           <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
             <span>
               <strong className="font-serif text-lg">{submissionCount}</strong> tests taken
@@ -296,163 +246,135 @@ export default async function TeacherHomePage() {
 
       {setupDone ? (
         <div className="grid items-start gap-4 lg:grid-cols-5">
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle>Your batches</CardTitle>
-              <Button asChild size="sm" variant="ghost">
-                <Link href="/teacher/batches">View all →</Link>
-              </Button>
-            </CardHeader>
-            <div className="grid gap-3">
-              {batches.slice(0, 4).map((batch) => {
-                const average = batchAverages.get(batch.id);
-                const percent = average ? Math.round(average.sum / average.count) : null;
-                const studentTotal = batch.batch_students[0]?.count ?? 0;
+          <div className="grid gap-4 lg:col-span-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your batches</CardTitle>
+                <Button asChild size="sm" variant="ghost">
+                  <Link href="/teacher/batches">View all →</Link>
+                </Button>
+              </CardHeader>
+              <div className="grid gap-3">
+                {batches.slice(0, 4).map((batch) => {
+                  const average = batchAverages.get(batch.id);
+                  const percent = average ? Math.round(average.sum / average.count) : null;
+                  const studentTotal = batch.batch_students[0]?.count ?? 0;
 
-                return (
-                  <div key={batch.id} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-serif text-base font-semibold">{batch.name}</p>
-                      <CopyChip value={batch.invite_code} />
-                    </div>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {batch.exam_target} · {studentTotal} {studentTotal === 1 ? "student" : "students"}
-                    </p>
-                    {percent !== null ? (
-                      <div className="mt-2 flex items-center gap-3">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className={
-                              percent >= 60
-                                ? "bar-animate h-full rounded-full bg-primary"
-                                : "bar-animate h-full rounded-full bg-[#c98a3c]"
-                            }
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                        <span className="font-serif text-sm font-semibold">{percent}%</span>
+                  return (
+                    <div key={batch.id} className="surface-gradient rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-serif text-base font-semibold">{batch.name}</p>
+                        <CopyChip value={batch.invite_code} />
                       </div>
-                    ) : null}
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {batch.exam_target} · {studentTotal} {studentTotal === 1 ? "student" : "students"}
+                      </p>
+                      {percent !== null ? (
+                        <div className="mt-2 flex items-center gap-3">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={
+                                percent >= 60
+                                  ? "bar-animate h-full rounded-full bg-primary"
+                                  : "bar-animate h-full rounded-full bg-[#c98a3c]"
+                              }
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <span className="font-serif text-sm font-semibold">{percent}%</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <Button asChild className="mt-3 w-full" variant="outline">
+                <Link href="/teacher/batches">
+                  <UsersRound className="h-4 w-4" aria-hidden="true" />
+                  Create a new batch
+                </Link>
+              </Button>
+            </Card>
+
+            {weakest.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <div>
+                    <CardTitle className="text-base">Reteach radar</CardTitle>
+                    <p className="script-note mt-0.5">What the batch finds hardest —</p>
                   </div>
-                );
-              })}
-              {batches.length === 0 ? <p className="script-note">No batches yet.</p> : null}
-            </div>
-          </Card>
+                </CardHeader>
+                <div className="grid gap-2.5">
+                  {weakest.map((topic) => (
+                    <div key={topic.topic} className="grid gap-1 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span>{topic.topic}</span>
+                        <span
+                          className={
+                            topic.percent < 60 ? "font-serif font-semibold text-[#c98a3c]" : "font-serif font-semibold"
+                          }
+                        >
+                          {topic.percent}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={
+                            topic.percent < 60
+                              ? "bar-animate h-full rounded-full bg-[#c98a3c]"
+                              : "bar-animate h-full rounded-full bg-primary"
+                          }
+                          style={{ width: `${topic.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+          </div>
 
           <div className="grid gap-4 lg:col-span-2">
             <Card>
               <CardHeader>
                 <CardTitle>Recent activity</CardTitle>
+                <Button asChild size="sm" variant="ghost">
+                  <Link href="/teacher/activity">View all →</Link>
+                </Button>
               </CardHeader>
-              <ul className="grid gap-2.5 text-sm">
-                {actions.map((item) => (
-                  <li key={item.text} className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#c98a3c]" />
-                      <span className="truncate">{item.text}</span>
-                    </span>
-                    {item.href ? (
+              {actions.length > 0 ? (
+                <ul className="mb-3 grid gap-2 border-b pb-3 text-sm">
+                  {actions.map((item) => (
+                    <li key={item.text} className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#c98a3c]" />
+                        <span className="truncate">{item.text}</span>
+                      </span>
                       <Button asChild size="sm" variant="outline">
                         <Link href={item.href}>{item.action}</Link>
                       </Button>
-                    ) : null}
-                  </li>
-                ))}
-                {events.map((item) => (
-                  <li key={`${item.text}-${item.at}`} className="flex items-start gap-2">
-                    <span
-                      className={
-                        item.tone === "event"
-                          ? "mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary/60"
-                          : "mt-1.5 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
-                      }
-                    />
-                    <span>
-                      {item.text}
-                      {item.at ? (
-                        <span className="block font-mono text-xs text-muted-foreground">{timeAgo(item.at)}</span>
-                      ) : null}
-                    </span>
-                  </li>
-                ))}
-                {actions.length === 0 && events.length === 0 ? (
-                  <p className="script-note">All quiet — activity shows up here.</p>
-                ) : null}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <ActivityFeedList events={feedEvents.slice(0, 5)} />
             </Card>
 
-            <Card>
-              <p className="flex items-center gap-1.5 text-sm font-medium">
-                <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-                AI credits
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {aiLeft} of {aiLimit} left this month
-              </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="bar-animate h-full rounded-full bg-primary"
-                  style={{ width: `${Math.min(100, (aiLeft / aiLimit) * 100)}%` }}
-                />
-              </div>
-            </Card>
-          </div>
-        </div>
-      ) : null}
-
-      {weakest.length > 0 || trend.length >= 2 ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {weakest.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle className="text-base">Reteach radar</CardTitle>
-                  <p className="script-note mt-0.5">What the batch finds hardest —</p>
-                </div>
-              </CardHeader>
-              <div className="grid gap-2.5">
-                {weakest.map((topic) => (
-                  <div key={topic.topic} className="grid gap-1 text-sm">
-                    <div className="flex justify-between gap-3">
-                      <span>{topic.topic}</span>
-                      <span
-                        className={
-                          topic.percent < 60 ? "font-serif font-semibold text-[#c98a3c]" : "font-serif font-semibold"
-                        }
-                      >
-                        {topic.percent}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={
-                          topic.percent < 60
-                            ? "bar-animate h-full rounded-full bg-[#c98a3c]"
-                            : "bar-animate h-full rounded-full bg-primary"
-                        }
-                        style={{ width: `${topic.percent}%` }}
-                      />
-                    </div>
+            {trend.length >= 2 ? (
+              <Card>
+                <CardHeader>
+                  <div>
+                    <CardTitle className="text-base">Batch trend</CardTitle>
+                    <p className="script-note mt-0.5">Average score over time —</p>
                   </div>
-                ))}
-              </div>
-            </Card>
-          ) : null}
-          {trend.length >= 2 ? (
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle className="text-base">Batch trend</CardTitle>
-                  <p className="script-note mt-0.5">Average score over time —</p>
+                </CardHeader>
+                <div className="flex items-end justify-between gap-3">
+                  <p className="font-serif text-4xl font-semibold text-primary">{trend[trend.length - 1]}%</p>
+                  <Sparkline className="h-12 w-40" values={trend} />
                 </div>
-              </CardHeader>
-              <div className="flex items-end justify-between gap-3">
-                <p className="font-serif text-4xl font-semibold text-primary">{trend[trend.length - 1]}%</p>
-                <Sparkline className="h-12 w-40" values={trend} />
-              </div>
-            </Card>
-          ) : null}
+              </Card>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </main>
@@ -498,7 +420,7 @@ function StatCard({
         className={
           highlight
             ? "border-primary bg-primary text-primary-foreground transition hover:bg-primary/90"
-            : "transition hover:border-primary/40 hover:bg-secondary/30"
+            : "surface-gradient transition hover:border-primary/40"
         }
       >
         <p
