@@ -49,17 +49,17 @@ export async function AppNav() {
   return (
     <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur">
       <nav className="mx-auto flex min-h-14 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4">
-          <Link className="flex items-center gap-2" href="/">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link className="flex shrink-0 items-center gap-2" href="/">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-serif text-lg font-semibold text-primary-foreground">
               प
             </span>
             <span className="font-serif text-xl font-bold text-primary">Padho.</span>
           </Link>
-          <span className="hidden rounded-full border px-2.5 py-0.5 font-mono text-xs text-muted-foreground md:inline">
+          <span className="hidden shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-xs text-muted-foreground md:inline">
             Agartala · Phase 0
           </span>
-          <div className="no-scrollbar flex items-center gap-1 overflow-x-auto text-sm">
+          <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto text-sm">
             <NavLinks links={links} />
           </div>
         </div>

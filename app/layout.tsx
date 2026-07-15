@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Caveat, IBM_Plex_Mono, Public_Sans, Spectral } from "next/font/google";
+import { IBM_Plex_Mono, Public_Sans, Spectral } from "next/font/google";
 
 import { AppNav } from "@/components/app-nav";
 
@@ -23,12 +23,6 @@ const plexMono = IBM_Plex_Mono({
   variable: "--font-mono"
 });
 
-const caveat = Caveat({
-  subsets: ["latin"],
-  weight: "500",
-  variable: "--font-script"
-});
-
 export const metadata: Metadata = {
   title: "Padho — coaching, simplified",
   description: "Teacher-first coaching management for tutors and small institutes"
@@ -37,9 +31,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body
-        className={`${spectral.variable} ${publicSans.variable} ${plexMono.variable} ${caveat.variable} font-sans`}
-      >
+      <body className={`${spectral.variable} ${publicSans.variable} ${plexMono.variable} font-sans`}>
         <AppNav />
         {children}
       </body>

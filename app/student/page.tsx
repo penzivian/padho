@@ -125,7 +125,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   return (
     <main className="page-shell">
       <div>
-        <p className="script-note text-lg">Namaskar,</p>
+        <p className="greeting-eyebrow">Namaskar,</p>
         <h1 className="text-3xl font-semibold">{firstName}</h1>
       </div>
 
@@ -145,7 +145,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       ) : null}
 
       {hasBatch ? (
-      <div className="grid items-stretch gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
         {liveTest ? (
           <Card className="h-full border-primary/50 bg-[#eef7f5]">

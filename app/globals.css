@@ -50,9 +50,15 @@
     @apply rounded-lg border bg-card p-4 shadow-sm;
   }
 
-  /* Handwritten helper notes, borrowed from the Warm Workbook direction */
+  /* Small accent / helper notes — clean Public Sans (matches the design prototype),
+     not a cursive face. */
   .script-note {
-    @apply font-script text-base text-muted-foreground;
+    @apply text-sm text-muted-foreground;
+  }
+
+  /* The ochre greeting eyebrow ("Namaskar," / "Good afternoon,") from the prototype. */
+  .greeting-eyebrow {
+    @apply text-sm font-medium text-[#c98a3c];
   }
 
   /* Invite codes and timers */

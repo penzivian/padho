@@ -149,7 +149,7 @@ export default async function TeacherHomePage() {
     <main className="page-shell">
       <div className="hero-gradient flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 shadow-sm">
         <div>
-          <p className="script-note text-lg text-[#c98a3c]">{greeting}</p>
+          <p className="greeting-eyebrow">{greeting}</p>
           <h1 className="text-3xl font-semibold">{firstName}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -245,8 +245,8 @@ export default async function TeacherHomePage() {
       ) : null}
 
       {setupDone ? (
-        <div className="grid items-start gap-4 lg:grid-cols-5">
-          <div className="grid gap-4 lg:col-span-3">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 lg:col-span-3">
             <Card>
               <CardHeader>
                 <CardTitle>Your batches</CardTitle>
@@ -334,7 +334,7 @@ export default async function TeacherHomePage() {
             ) : null}
           </div>
 
-          <div className="grid gap-4 lg:col-span-2">
+          <div className="grid grid-cols-1 gap-4 lg:col-span-2">
             <Card>
               <CardHeader>
                 <CardTitle>Recent activity</CardTitle>
@@ -343,7 +343,7 @@ export default async function TeacherHomePage() {
                 </Button>
               </CardHeader>
               {actions.length > 0 ? (
-                <ul className="mb-3 grid gap-2 border-b pb-3 text-sm">
+                <ul className="mb-3 grid grid-cols-1 gap-2 border-b pb-3 text-sm">
                   {actions.map((item) => (
                     <li key={item.text} className="flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2">
