@@ -1,9 +1,13 @@
+import { cache } from "react";
+
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { Row } from "@/types/database";
 
-export async function getCurrentProfile() {
+// Deduped per request: AppNav and the page both call this, but React `cache`
+// collapses them into a single auth.getUser() + profile fetch per render.
+export const getCurrentProfile = cache(async () => {
   const supabase = createSupabaseServerClient();
   const {
     data: { user }
@@ -18,7 +22,7 @@ export async function getCurrentProfile() {
     .maybeSingle();
 
   return { user, profile };
-}
+});
 
 export async function requireProfile(role?: Row<"profiles">["role"]) {
   const session = await getCurrentProfile();
