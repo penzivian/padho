@@ -2,7 +2,7 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-09** (activity feed/history, AI credits in profile menu, dashboard warm-up — see [Recent changes](#recent-changes-2026-07-09-activity-feed--dashboard-polish)).
+**Last updated: 2026-07-19** (deployed live to Vercel + Brevo email; performance pass — see [Recent changes](#recent-changes-2026-07-19-deploy--performance)).
 
 ## What this project is
 
@@ -21,7 +21,8 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 - Supabase (Postgres + Auth + Storage)
 - Anthropic Claude API via a thin adapter with a mock fallback
 - `unpdf` for key-free local PDF text extraction (question-paper upload path when no Anthropic key is set)
-- pnpm 10.14.0 (on Windows, invoked via `npm.cmd exec pnpm@10.14.0 ...`)
+- pnpm 10.14.0. Dev is now on macOS via a bootstrapped Node toolchain: `export PATH="$HOME/.local/nodetool/node-v24.14.0-darwin-arm64/bin:$PATH"` then `corepack pnpm@10.14.0 <cmd>`. (Historically Windows via `npm.cmd exec pnpm@10.14.0 ...`.)
+- Deployed on **Vercel** (Hobby) with GitHub auto-deploy; email via **Brevo SMTP**. See [Deploy / live state](#recent-changes-2026-07-19-deploy--performance).
 
 ## Architecture conventions (follow these — they are already consistent across the codebase)
 
@@ -44,7 +45,19 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 
 Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code path) + onboarding · teacher batch management (create, invite code with copy-to-clipboard, manual add by phone, remove, roster with avatar stack) · question papers (AI-generate, key-free PDF extraction via `lib/extract.ts` + `unpdf`, review/edit with an answer-key paste box, save) · tests (schedule with a keyless-MCQ answer-key guard, student take via safe RPC, live countdown) · grading (MCQ auto-score server-side, subjective AI-suggest + teacher approval) · progress snapshots + dashboards (both roles, animated topic bars) · single-turn AI doubt solving · profile page (view/edit name + phone) · top nav with role-aware links and a profile menu. Consistent pending/error states across all forms and AI actions. Unit tests pass (`pnpm test`, 20/20) — pure scoring helpers (including `findKeylessMcqs`), a full mixed multi-topic `buildProgressSnapshot`, the `lib/ai.ts` mock outputs, and the `lib/extract.ts` PDF-parsing heuristics (verified against a real 25-question uploaded PDF, not just synthetic fixtures). A manual full-cycle E2E script lives in `MANUAL_E2E.md`; a demo-data seed script lives in `scripts/seed-demo.ts`.
 
-A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with the migration applied — currently used for local dev/demo, not yet deployed.
+A real Supabase project is provisioned (`ap-south-1` Mumbai, ref in `.env.local`) with all migrations applied, and the app is **deployed live** (Vercel Hobby, GitHub auto-deploy, Brevo SMTP for login codes). See [Recent changes (2026-07-19)](#recent-changes-2026-07-19-deploy--performance) for the live URLs and remaining go-live gaps.
+
+## Recent changes (2026-07-19 deploy + performance)
+
+- **Live deployment.** Repo `github.com/penzivian/padho` (private) → Vercel Hobby, auto-deploy on push to `main`. Production URL **`https://padho-three.vercel.app`**. Migration `0004_fix_practice_insert.sql` applied live (practice-attempts RLS insert fix — security-definer `can_practice_question`, replacing a policy that joined `questions`, which students can't SELECT).
+- **Git author gotcha (resolved).** Vercel Hobby *blocks* deploys whose commit-author email isn't tied to the account's GitHub identity (surfaces as "Deployment Blocked" / an "Upgrade to Pro" Redeploy). Commits must be authored as `Supratim Deb <supratimdebshan@gmail.com>` — the repo's `git config user.email` is set to this. If a deploy is ever blocked on author again, that email isn't verified on GitHub.
+- **Email = 6-digit code, not a link.** Brevo SMTP (`smtp-relay.brevo.com:587`; login is a Brevo-assigned `…@smtp-brevo.com` address, **not** the account email). Supabase auth templates (magic_link + confirmation) were edited to be **code-only** (`{{ .Token }}`, `mailer_otp_length=6`, no `{{ .ConfirmationURL }}`). Supabase auth config is managed via the **Management API** (`PATCH /v1/projects/{ref}/config/auth`, via `curl` — Python urllib hits Cloudflare 1010; `smtp_port` must be a **string** `"587"`).
+- **Performance pass (fixes "navigation feels slow"):**
+  - **Region pin** — added `vercel.json` `{"regions": ["bom1"]}` so serverless functions run in Mumbai, co-located with Supabase `ap-south-1` (was defaulting to `iad1`/US → every DB+auth round-trip crossed the planet). Biggest single latency win.
+  - **Per-request auth dedupe** — `getCurrentProfile` in `lib/auth.ts` is now wrapped in React `cache()`, so `AppNav` and the page share one `auth.getUser()` + profile fetch instead of two each.
+  - **Instant loading skeletons** — `components/ui/skeleton.tsx` + `components/page-skeleton.tsx` (generic shell matching `page-shell`) rendered via a `loading.tsx` in every navigable route; `.skeleton` pulse in `globals.css`, reduced-motion aware.
+- **Design/mobile (2026-07-09→19):** dropped the Caveat cursive face for a clean ochre `.greeting-eyebrow` (Spectral/Public Sans/IBM Plex Mono only); fixed mobile horizontal overflow (nav `min-w-0`, `grid-cols-1` bases on the `lg:grid-cols-5` dashboard bands).
+- **Remaining go-live gaps** (owner will do): custom domain + **Brevo DKIM/SPF** (Gmail sender currently risks spam — the #1 signup blocker); enable Vercel **Speed Insights + Web Analytics** (both off) and error monitoring; run `MANUAL_E2E.md` against the live URL. Housekeeping: **rotate the secrets pasted during setup** (GitHub PAT, Supabase management token, Brevo SMTP key); confirm `DEV_LOGIN_CODES` is unset in Vercel env (also hard-disabled in prod by code).
 
 ## Recent changes (2026-07-09 activity feed + dashboard polish)
 
@@ -120,16 +133,19 @@ A real Supabase project is provisioned (`ap-south-1`, ref in `.env.local`) with 
 
 ## Verification (run before considering any change done)
 
+macOS (current):
 ```
-npm.cmd exec pnpm@10.14.0 test    # unit tests
-npm.cmd exec pnpm@10.14.0 lint    # eslint
-npm.cmd exec pnpm@10.14.0 build   # type-check + production build
+export PATH="$HOME/.local/nodetool/node-v24.14.0-darwin-arm64/bin:$PATH"
+corepack pnpm@10.14.0 test    # unit tests
+corepack pnpm@10.14.0 lint    # eslint
+corepack pnpm@10.14.0 build   # type-check + production build
 ```
+(Windows equivalent: `npm.cmd exec pnpm@10.14.0 <test|lint|build>`.)
 
 ## Candidate next steps (pick explicitly; don't assume)
 
 1. **Hardening pass — DONE (2026-06-30).** Model string fixed, extraction made resilient, error/loading states tightened, scoring-pipeline + AI-mock tests added, `enforceAiLimit` cleaned up.
 2. **Platform bring-up + design pass — DONE (2026-06-30).** Real Supabase project provisioned and migrated; auth hardened with a dev-only on-screen-code fallback and a Google Sign-In code path; key-free PDF extraction; full redesign; demo data seed script. See [Recent changes](#recent-changes-2026-06-30-platform-pass).
-3. **Production readiness — IN PROGRESS (code/config side done 2026-07-05; recommended next).** Code and docs are deploy-ready: clean production build, env checklist in `.env.example`, deploy guide in `README.md`. Remaining are the manual dashboard steps (Site URL, custom SMTP + OTP template edit, optional Google OAuth credentials) and the Vercel deploy itself — then run `MANUAL_E2E.md` against the deployed app and **put it in front of one real teacher**.
+3. **Production readiness — LARGELY DONE (deployed live 2026-07-19).** App is on Vercel with Brevo SMTP sending 6-digit codes, functions pinned to Mumbai, loading skeletons in place. Remaining before real onboarding: **custom domain + Brevo DKIM/SPF** (deliverability — top blocker), enable Vercel Speed Insights/Analytics + error monitoring, run `MANUAL_E2E.md` against the live URL, rotate setup secrets — then **put it in front of one real teacher**. See [Recent changes (2026-07-19)](#recent-changes-2026-07-19-deploy--performance).
 4. **Phase 1** — student/parent polish, WhatsApp weekly reports, fee tracking, attendance (deferred features; only when chosen). Also queued: **WhatsApp Business API upgrade** (swap `wa.me` behind `buildResultMessage` when volume justifies it), **AI-coached practice feedback** (deliberately not built yet), **dark mode** (students study at night).
 5. **Phase 3 (later)** — public discovery layer, once 8–10 institutes have real activity in the platform.
