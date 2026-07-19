@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signOutAction } from "@/app/actions";
 import { NavLinks } from "@/components/nav-links";
 import { ProfileMenu } from "@/components/profile-menu";
+import { SubmitButton } from "@/components/submit-button";
 import { getCurrentProfile } from "@/lib/auth";
 import { optionalEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -79,9 +80,9 @@ export async function AppNav() {
           </div>
         ) : (
           <form action={signOutAction}>
-            <button className="rounded-md px-3 py-1.5 text-sm hover:bg-muted" type="submit">
+            <SubmitButton pendingText="Signing out" size="sm" variant="ghost">
               Sign out
-            </button>
+            </SubmitButton>
           </form>
         )}
       </nav>

@@ -27,6 +27,17 @@
     @apply border-border;
   }
 
+  /* Remove the mobile double-tap-zoom delay on everything tappable. */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     background-image: linear-gradient(180deg, #eef0e7 0%, #d3ded8 100%);
@@ -128,6 +139,11 @@
     animation: none;
   }
 
+  .nav-progress {
+    animation: none;
+    width: 80%;
+  }
+
   .sparkline-path {
     animation: none;
     stroke-dashoffset: 0;
@@ -142,6 +158,26 @@
 @keyframes skeleton-pulse {
   50% {
     opacity: 0.45;
+  }
+}
+
+/* Thin teal bar across the top while a nav transition is pending. */
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  height: 2px;
+  background: hsl(var(--primary));
+  animation: nav-progress 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes nav-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 85%;
   }
 }
 

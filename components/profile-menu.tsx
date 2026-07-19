@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Sparkles, UserRound } from "lucide-react";
+import { Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { signOutAction } from "@/app/actions";
 
@@ -95,17 +96,30 @@ export function ProfileMenu({ fullName, role, contact, aiCredits = null }: Profi
               My profile
             </Link>
             <form action={signOutAction}>
-              <button
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-                type="submit"
-              >
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-                Sign out
-              </button>
+              <SignOutItem />
             </form>
           </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SignOutItem() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
+      disabled={pending}
+      type="submit"
+    >
+      {pending ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+      ) : (
+        <LogOut className="h-4 w-4" aria-hidden="true" />
+      )}
+      {pending ? "Signing out" : "Sign out"}
+    </button>
   );
 }

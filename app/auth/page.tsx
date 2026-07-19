@@ -1,10 +1,8 @@
-import { KeyRound, MailCheck } from "lucide-react";
-
 import { sendOtpAction, signInWithGoogleAction, verifyOtpAction } from "@/app/actions";
 import { AuthHashErrors } from "@/components/auth-hash-errors";
+import { OtpInput } from "@/components/otp-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 
@@ -23,90 +21,115 @@ export default function AuthPage({ searchParams }: AuthPageProps) {
   const devCode = searchParams?.devcode ?? "";
 
   return (
-    <main className="page-shell max-w-md">
+    <main className="flex min-h-screen">
       <AuthHashErrors />
-      <div className="text-center">
-        <p className="font-serif text-4xl font-bold text-primary">Padho.</p>
-        <p className="script-note mt-1 text-lg">teaching, tests &amp; progress — in one place</p>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{sent ? "Verify OTP" : "Sign in"}</CardTitle>
-          {sent ? <MailCheck className="h-5 w-5 text-primary" /> : <KeyRound className="h-5 w-5 text-primary" />}
-        </CardHeader>
 
-        {searchParams?.error ? (
-          <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {searchParams.error}
+      {/* Brand panel — desktop only */}
+      <aside className="hidden w-[45%] flex-col justify-between bg-gradient-to-br from-[#1a6b63] to-[#14544e] p-10 lg:flex">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-foreground/10 font-serif text-xl font-semibold text-primary-foreground">
+          प
+        </span>
+        <div>
+          <p className="font-serif text-6xl font-bold text-primary-foreground">Padho.</p>
+          <p className="mt-3 text-lg text-primary-foreground/80">
+            teaching, tests &amp; progress — in one place
           </p>
-        ) : null}
+        </div>
+        <p className="text-sm text-primary-foreground/60">
+          Made for tutors and small institutes · Agartala
+        </p>
+      </aside>
 
-        {sent && devCode ? (
-          <p className="mb-4 rounded-md border bg-muted p-3 text-sm text-muted-foreground">
-            Local test mode — code <strong className="text-foreground">{devCode}</strong> is
-            filled in below. Press Continue.
+      {/* Form panel */}
+      <section className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center lg:hidden">
+            <p className="font-serif text-4xl font-bold text-primary">Padho.</p>
+            <p className="script-note mt-1 text-base">teaching, tests &amp; progress — in one place</p>
+          </div>
+
+          <h1 className="text-2xl font-semibold">{sent ? "Enter your code" : "Sign in"}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {sent
+              ? `We sent a 6-digit code to ${contact || "your email"}.`
+              : "Tests, grading and progress for your batches."}
           </p>
-        ) : null}
 
-        {sent && !devCode ? (
-          <p className="mb-4 rounded-md border bg-muted p-3 text-sm">
-            Check your email and click the sign-in link in the <strong>most recent</strong> email,
-            using this same browser. Requesting again invalidates older emails. If the email shows
-            a code, you can enter it below instead.
-          </p>
-        ) : null}
+          {searchParams?.error ? (
+            <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {searchParams.error}
+            </p>
+          ) : null}
 
-        {sent ? (
-          <form action={verifyOtpAction} className="grid gap-4">
-            <FormField htmlFor="contact" label="Email or phone">
-              <Input id="contact" name="contact" defaultValue={contact} required />
-            </FormField>
-            <FormField htmlFor="token" label="OTP">
-              <Input
-                id="token"
-                name="token"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                defaultValue={devCode}
-                required
-              />
-            </FormField>
-            <SubmitButton pendingText="Verifying">Continue</SubmitButton>
-          </form>
-        ) : (
-          <>
-            <form action={sendOtpAction} className="grid gap-4">
+          {sent && devCode ? (
+            <p className="mt-4 rounded-md border bg-muted p-3 text-sm text-muted-foreground">
+              Local test mode — code <strong className="text-foreground">{devCode}</strong> is
+              filled in below. Press Continue.
+            </p>
+          ) : null}
+
+          {sent && !devCode ? (
+            <p className="mt-4 rounded-md border bg-muted p-3 text-sm">
+              Enter the code from the <strong>most recent</strong> email — requesting again
+              invalidates older ones.
+            </p>
+          ) : null}
+
+          {sent ? (
+            <form action={verifyOtpAction} className="mt-6 grid gap-4">
               <FormField htmlFor="contact" label="Email or phone">
-                <Input id="contact" name="contact" placeholder="you@example.com or +919999999999" required />
+                <Input className="h-12" defaultValue={contact} id="contact" name="contact" required />
               </FormField>
-              <SubmitButton pendingText="Sending">Send OTP</SubmitButton>
-            </form>
-
-            <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              or
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <form action={signInWithGoogleAction}>
-              <SubmitButton className="w-full" pendingText="Redirecting" variant="outline">
-                <GoogleIcon />
-                Continue with Google
+              <FormField htmlFor="token" label="6-digit code">
+                <OtpInput defaultValue={devCode} name="token" />
+              </FormField>
+              <SubmitButton className="h-11 w-full" pendingText="Verifying">
+                Continue
               </SubmitButton>
             </form>
-          </>
-        )}
+          ) : (
+            <>
+              <form action={sendOtpAction} className="mt-6 grid gap-4">
+                <FormField htmlFor="contact" label="Email or phone">
+                  <Input
+                    className="h-12"
+                    id="contact"
+                    name="contact"
+                    placeholder="you@example.com or +919999999999"
+                    required
+                  />
+                </FormField>
+                <SubmitButton className="h-11 w-full" pendingText="Sending">
+                  Send code
+                </SubmitButton>
+              </form>
 
-        {sent ? (
-          <Button className="mt-3 w-full" variant="ghost" asChild>
-            <a href="/auth">Use another contact</a>
-          </Button>
-        ) : null}
-      </Card>
+              <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                or
+                <span className="h-px flex-1 bg-border" />
+              </div>
 
-      <p className="text-center text-xs text-muted-foreground">
-        Private by design — scores and answers are visible only to students and their teacher.
-      </p>
+              <form action={signInWithGoogleAction}>
+                <SubmitButton className="h-11 w-full" pendingText="Redirecting" variant="outline">
+                  <GoogleIcon />
+                  Continue with Google
+                </SubmitButton>
+              </form>
+            </>
+          )}
+
+          {sent ? (
+            <Button asChild className="mt-3 w-full" variant="ghost">
+              <a href="/auth">Use another contact</a>
+            </Button>
+          ) : null}
+
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Private by design — scores and answers are visible only to students and their teacher.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
