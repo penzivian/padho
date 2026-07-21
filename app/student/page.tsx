@@ -1,16 +1,19 @@
+import { Suspense } from "react";
+
 import Link from "next/link";
 import { ClipboardList, Dumbbell, PlusCircle } from "lucide-react";
 
 import { joinBatchAction } from "@/app/actions";
-import { ActivityHeatmap } from "@/components/activity-heatmap";
 import { ResultReveal } from "@/components/result-reveal";
 import { Sparkline } from "@/components/sparkline";
+import { StudentActivityHeatmap } from "@/components/student-activity-heatmap";
 import { SubmitButton } from "@/components/submit-button";
 import { TestCountdown } from "@/components/test-countdown";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { requireProfile } from "@/lib/auth";
 import type { ActivityEvent } from "@/lib/activity";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -61,8 +64,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     { data: membershipData },
     { data: testData },
     { data: submissionData },
-    { data: progressData },
-    { data: attemptData }
+    { data: progressData }
   ] = await Promise.all([
     supabase.from("batch_students").select("batch_id,batches(name,subject,exam_target)"),
     supabase
@@ -73,12 +75,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     supabase
       .from("progress_snapshots")
       .select("id,test_id,score_percent,topic_breakdown,created_at,tests(title),batches(name)")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("practice_attempts")
-      .select("created_at")
       .order("created_at", { ascending: false })
-      .limit(400)
   ]);
 
   const memberships = (membershipData ?? []) as unknown as BatchMembership[];
@@ -115,12 +112,11 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
         .filter((test) => !submittedByTest.has(test.id) && new Date(test.scheduled_at).getTime() > now)
         .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null);
   const trendValues = [...progress].reverse().map((snapshot) => snapshot.score_percent);
-  const activityEvents: ActivityEvent[] = [
-    ...(attemptData ?? []).map((row) => ({ at: row.created_at as string, kind: "practice" as const })),
-    ...submissions
-      .filter((row) => row.submitted_at)
-      .map((row) => ({ at: row.submitted_at as string, kind: "test" as const }))
-  ];
+  // Practice events are fetched inside the streamed heatmap; test events come from
+  // the submissions already loaded here.
+  const testEvents: ActivityEvent[] = submissions
+    .filter((row) => row.submitted_at)
+    .map((row) => ({ at: row.submitted_at as string, kind: "test" as const }));
 
   return (
     <main className="page-shell">
@@ -148,7 +144,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
       <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
         {liveTest ? (
-          <Card className="h-full border-primary/50 bg-[#eef7f5]">
+          <Card className="surface-teal h-full border-primary/50">
             <CardHeader>
               <div>
                 <p className="font-mono text-xs font-semibold uppercase tracking-widest text-primary">
@@ -207,7 +203,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
         )}
         </div>
         <div className="lg:col-span-2">
-          <ActivityHeatmap events={activityEvents} />
+          <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+            <StudentActivityHeatmap testEvents={testEvents} />
+          </Suspense>
         </div>
       </div>
       ) : null}
@@ -342,7 +340,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                   className={
                     snapshot.score_percent >= 75
                       ? "rounded-full bg-secondary px-2.5 py-0.5 font-serif text-sm font-semibold text-secondary-foreground"
-                      : "rounded-full bg-[#f6e9d3] px-2.5 py-0.5 font-serif text-sm font-semibold text-[#8a5a1f]"
+                      : "rounded-full bg-[#f6e9d3] px-2.5 py-0.5 font-serif text-sm font-semibold text-[#8a5a1f] dark:bg-[#3a2f1a] dark:text-[#e0b978]"
                   }
                 >
                   {snapshot.score_percent}%

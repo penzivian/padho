@@ -15,12 +15,16 @@ type PracticeSetRow = {
 };
 
 export default async function StudentPracticePage() {
-  await requireProfile("student");
   const supabase = createSupabaseServerClient();
-  const { data } = await supabase
-    .from("practice_sets")
-    .select("id,title,published_at,batches(name)")
-    .order("published_at", { ascending: false });
+  // RLS scopes the query to the caller, so it is safe to run alongside the auth
+  // gate rather than after it.
+  const [, { data }] = await Promise.all([
+    requireProfile("student"),
+    supabase
+      .from("practice_sets")
+      .select("id,title,published_at,batches(name)")
+      .order("published_at", { ascending: false })
+  ]);
   const sets = (data ?? []) as unknown as PracticeSetRow[];
 
   return (

@@ -1,20 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, LogOut, Sparkles, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Loader2, LogOut, UserRound } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { signOutAction } from "@/app/actions";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type ProfileMenuProps = {
   fullName: string;
   role: "teacher" | "student";
   contact: string;
-  aiCredits?: { used: number; limit: number } | null;
+  creditsSlot?: ReactNode;
 };
 
-export function ProfileMenu({ fullName, role, contact, aiCredits = null }: ProfileMenuProps) {
+export function ProfileMenu({ fullName, role, contact, creditsSlot = null }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -63,28 +64,7 @@ export function ProfileMenu({ fullName, role, contact, aiCredits = null }: Profi
             <span className="truncate">{contact}</span>
           </p>
 
-          {aiCredits ? (
-            <div className="mt-3 rounded-lg border bg-secondary/40 p-2.5">
-              <p className="flex items-center justify-between text-xs font-medium">
-                <span className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                  AI credits
-                </span>
-                <span className="font-mono text-muted-foreground">
-                  {Math.max(0, aiCredits.limit - aiCredits.used)}/{aiCredits.limit}
-                </span>
-              </p>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{
-                    width: `${Math.min(100, Math.max(0, ((aiCredits.limit - aiCredits.used) / aiCredits.limit) * 100))}%`
-                  }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">left this month</p>
-            </div>
-          ) : null}
+          {creditsSlot}
 
           <div className="mt-3 grid gap-1 border-t pt-2 text-sm">
             <Link
@@ -95,6 +75,7 @@ export function ProfileMenu({ fullName, role, contact, aiCredits = null }: Profi
               <UserRound className="h-4 w-4" aria-hidden="true" />
               My profile
             </Link>
+            <ThemeToggle />
             <form action={signOutAction}>
               <SignOutItem />
             </form>

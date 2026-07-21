@@ -23,6 +23,28 @@
     --ring: 174 61% 30%;
   }
 
+  /* Dark mode — same Calm Ledger palette, inverted: teal-charcoal ground, warm
+     off-white ink, paper cards become a raised dark surface, sand borders become
+     low-contrast warm gray, accents desaturated slightly to avoid night glare.
+     Body text contrast is ≥ 4.5:1 in both themes. */
+  .dark {
+    --background: 174 18% 10%; /* #151f1d */
+    --foreground: 40 22% 90%; /* #ece7db warm off-white */
+    --card: 172 16% 14%; /* #1e2b28 raised surface */
+    --card-foreground: 40 22% 90%;
+    --primary: 172 42% 52%; /* brighter teal so it reads on the dark ground */
+    --primary-foreground: 174 40% 12%;
+    --secondary: 172 18% 24%; /* #2f4340 */
+    --secondary-foreground: 168 30% 82%;
+    --muted: 170 12% 22%;
+    --muted-foreground: 40 12% 68%; /* #b1a99b */
+    --destructive: 8 50% 56%; /* desaturated terracotta */
+    --destructive-foreground: 0 0% 100%;
+    --border: 168 10% 26%;
+    --input: 168 10% 30%;
+    --ring: 172 42% 52%;
+  }
+
   * {
     @apply border-border;
   }
@@ -40,9 +62,22 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    background-image: linear-gradient(180deg, #eef0e7 0%, #d3ded8 100%);
-    background-attachment: fixed;
     min-height: 100vh;
+  }
+
+  /* Sage gradient as a fixed compositor layer instead of `background-attachment:
+     fixed` on body — the latter forces a full repaint every scroll frame on
+     Android Chrome. A fixed ::before composites, so scrolling stays smooth. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: linear-gradient(180deg, #eef0e7 0%, #d3ded8 100%);
+  }
+
+  .dark body::before {
+    background-image: linear-gradient(180deg, #151f1d 0%, #0e1614 100%);
   }
 
   h1,
@@ -88,6 +123,19 @@
 
   .surface-teal {
     background-image: linear-gradient(158deg, #eef7f5 0%, #dcebe8 100%);
+  }
+
+  /* Dark variants — subtle teal→charcoal surfaces, no bright paper. */
+  .dark .hero-gradient {
+    background-image: linear-gradient(135deg, #1c2e2a 0%, #17211f 46%, #23201a 100%);
+  }
+
+  .dark .surface-gradient {
+    background-image: linear-gradient(158deg, #1e2b28 0%, #1a2320 100%);
+  }
+
+  .dark .surface-teal {
+    background-image: linear-gradient(158deg, #1c2e2a 0%, #172622 100%);
   }
 
   /* Progress bars grow in on load */

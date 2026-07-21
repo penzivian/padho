@@ -1,13 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { type ReactNode, useTransition } from "react";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-type NavLink = { href: string; label: string; badge?: number };
+type NavLink = { href: string; label: string; badgeSlot?: ReactNode };
 
 export function NavLinks({ links }: { links: NavLink[] }) {
   const pathname = usePathname();
@@ -39,11 +39,7 @@ export function NavLinks({ links }: { links: NavLink[] }) {
             }}
           >
             {link.label}
-            {link.badge ? (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
-                {link.badge}
-              </span>
-            ) : null}
+            {link.badgeSlot}
           </Link>
         );
       })}

@@ -82,6 +82,14 @@ npm.cmd exec pnpm@10.14.0 build
    The default template is link-only; without this edit users never see a typeable code.
 4. **Phone OTP (optional, not needed for launch)** — email OTP is the launch path. Configure an SMS provider under Authentication → Sign In / Providers → Phone only if you later want phone logins (students added by phone can't sign in until then).
 
+## Performance — measure before optimizing
+
+`@vercel/speed-insights` and `@vercel/analytics` are mounted in `app/layout.tsx`. After
+deploying, enable both in the Vercel dashboard (Project → Speed Insights / Analytics — free
+on Hobby) and, before making any further performance changes, read the **real** TTFB / LCP
+per route from Speed Insights. The region pin (`bom1`), session middleware, and Suspense
+streaming are in place; judge the next move from data, not from how the app "feels."
+
 ## WhatsApp result delivery — upgrade path
 
 Result sharing uses wa.me click-to-chat deep links: messages send from the teacher's own

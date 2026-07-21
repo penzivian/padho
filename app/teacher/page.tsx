@@ -1,14 +1,16 @@
+import { Suspense } from "react";
+
 import Link from "next/link";
 import { CalendarClock, CheckCircle2, Circle, Sparkles, UsersRound } from "lucide-react";
 
-import { ActivityFeedList } from "@/components/activity-feed-list";
 import { CopyChip } from "@/components/copy-chip";
 import { Sparkline } from "@/components/sparkline";
+import { TeacherActivityFeed } from "@/components/teacher-activity-feed";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { requireProfile } from "@/lib/auth";
 import { findKeylessMcqs } from "@/lib/grading";
-import { loadActivityEvents } from "@/lib/teacher-activity";
 import { weakestTopics } from "@/lib/topics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { Json } from "@/types/database";
@@ -36,8 +38,7 @@ export default async function TeacherHomePage() {
     { data: pendingData },
     { data: paperData },
     { data: liveTestData },
-    { data: batchData },
-    feedEvents
+    { data: batchData }
   ] = await Promise.all([
     supabase.from("question_papers").select("id", { count: "exact", head: true }),
     supabase.from("tests").select("id", { count: "exact", head: true }),
@@ -62,8 +63,7 @@ export default async function TeacherHomePage() {
     supabase
       .from("batches")
       .select("id,name,exam_target,invite_code,batch_students(count)")
-      .order("created_at", { ascending: false }),
-    loadActivityEvents(supabase)
+      .order("created_at", { ascending: false })
   ]);
 
   const batches = (batchData ?? []) as unknown as BatchRow[];
@@ -357,7 +357,17 @@ export default async function TeacherHomePage() {
                   ))}
                 </ul>
               ) : null}
-              <ActivityFeedList events={feedEvents.slice(0, 5)} />
+              <Suspense
+                fallback={
+                  <div className="grid gap-2.5">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-5 w-full" />
+                    ))}
+                  </div>
+                }
+              >
+                <TeacherActivityFeed limit={5} />
+              </Suspense>
             </Card>
 
             {trend.length >= 2 ? (

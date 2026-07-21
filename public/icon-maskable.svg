@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Padho">
+  <!-- Full-bleed teal so any mask shape (circle, squircle) stays on-brand; the
+       glyph sits inside the maskable safe zone (central ~80%). -->
+  <rect width="512" height="512" fill="#1a6b63"/>
+  <text x="256" y="268" text-anchor="middle" dominant-baseline="central" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="248" fill="#fffdf8">प</text>
+</svg>
