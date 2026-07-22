@@ -7,7 +7,9 @@ import { joinBatchAction } from "@/app/actions";
 import { ResultReveal } from "@/components/result-reveal";
 import { Sparkline } from "@/components/sparkline";
 import { StudentActivityHeatmap } from "@/components/student-activity-heatmap";
+import { StudentWeekStrip } from "@/components/student-week-strip";
 import { SubmitButton } from "@/components/submit-button";
+import { TopicSegmentBar } from "@/components/topic-segment-bar";
 import { TestCountdown } from "@/components/test-countdown";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -202,7 +204,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
           </Card>
         )}
         </div>
-        <div className="lg:col-span-2">
+        <div className="hidden md:block lg:col-span-2">
           <Suspense fallback={<Skeleton className="h-32 w-full" />}>
             <StudentActivityHeatmap testEvents={testEvents} />
           </Suspense>
@@ -231,6 +233,14 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               <Sparkline className="hidden sm:block" values={trendValues} />
             </div>
           </Card>
+        </div>
+      ) : null}
+
+      {hasBatch ? (
+        <div className="md:hidden">
+          <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+            <StudentWeekStrip testEvents={testEvents} />
+          </Suspense>
         </div>
       ) : null}
 
@@ -346,7 +356,8 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                   {snapshot.score_percent}%
                 </span>
               </CardHeader>
-              <p className="mb-3 text-sm text-muted-foreground">{snapshot.batches?.name ?? "-"}</p>
+              <TopicSegmentBar className="mt-2" value={snapshot.topic_breakdown} />
+              <p className="mb-3 mt-2 text-sm text-muted-foreground">{snapshot.batches?.name ?? "-"}</p>
               <TopicBreakdown value={snapshot.topic_breakdown} />
               <Button asChild className="mt-3" size="sm" variant="outline">
                 <Link href={`/student/results/${snapshot.test_id}`}>Full result &amp; rank</Link>

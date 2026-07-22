@@ -2,7 +2,7 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-22** (session middleware, scroll-jank fix, Suspense streaming, Speed Insights/Analytics, PWA, dark mode, landing page — see [Recent changes](#recent-changes-2026-07-22-middleware-pwa-dark-mode-landing)).
+**Last updated: 2026-07-23** (mobile bottom tab bar, responsive activity strip, segmented result bars — see [Recent changes](#recent-changes-2026-07-23-mobile-bottom-nav-activity-strip-result-bars)).
 
 ## What this project is
 
@@ -46,6 +46,15 @@ Senior software developer. Wants simple, concise, efficient code: clean structur
 Auth (email OTP via link + code, dev-only on-screen codes, Google Sign-In code path) + onboarding · teacher batch management (create, invite code with copy-to-clipboard, manual add by phone, remove, roster with avatar stack) · question papers (AI-generate, key-free PDF extraction via `lib/extract.ts` + `unpdf`, review/edit with an answer-key paste box, save) · tests (schedule with a keyless-MCQ answer-key guard, student take via safe RPC, live countdown) · grading (MCQ auto-score server-side, subjective AI-suggest + teacher approval) · progress snapshots + dashboards (both roles, animated topic bars) · single-turn AI doubt solving · profile page (view/edit name + phone) · top nav with role-aware links and a profile menu. Consistent pending/error states across all forms and AI actions. Unit tests pass (`pnpm test`, 20/20) — pure scoring helpers (including `findKeylessMcqs`), a full mixed multi-topic `buildProgressSnapshot`, the `lib/ai.ts` mock outputs, and the `lib/extract.ts` PDF-parsing heuristics (verified against a real 25-question uploaded PDF, not just synthetic fixtures). A manual full-cycle E2E script lives in `MANUAL_E2E.md`; a demo-data seed script lives in `scripts/seed-demo.ts`.
 
 A real Supabase project is provisioned (`ap-south-1` Mumbai, ref in `.env.local`) with all migrations applied, and the app is **deployed live** (Vercel Hobby, GitHub auto-deploy, Brevo SMTP for login codes). See [Recent changes (2026-07-19)](#recent-changes-2026-07-19-deploy--performance) for the live URLs and remaining go-live gaps.
+
+## Recent changes (2026-07-23 mobile bottom nav, activity strip, result bars)
+
+Grafted three prototype refinements, each with a deliberate mobile/desktop split. No new deps/fonts, no backend/RPC/RLS/migration/AI changes. Verified: 44/44 tests (+4 `topic-segments`), lint, build; visual pass at 360/1440 in both themes — bottom nav + week strip on mobile only, top nav + full heatmap on desktop only, never both, no horizontal scroll, zero console errors.
+
+- **Shared nav source** (`components/nav-config.ts`) — `STUDENT_NAV` / `TEACHER_NAV` (`{href, label, shortLabel?, icon}`) now feed both the desktop top nav (AppNav → NavLinks, labels only — icons dropped to avoid crossing the RSC boundary) and the new mobile bottom bar. Single source of truth so the two navs can't drift.
+- **Mobile bottom tab bar** (`components/bottom-nav.tsx`) — fixed, `md:hidden`; the top nav's link row is now `hidden md:flex`, so exactly one shows per breakpoint. Role-aware tabs (Home/Tests/Practice/Doubts · Home/Batches/Papers/Tests), lucide icon + 11px label, ≥56px targets, active tab in `text-primary`, routes via the shared `useTransition` nav-progress pattern, `env(safe-area-inset-bottom)`. **Hidden on the immersive `/{role}/(tests|practice)/[id]` screens** so it never collides with their sticky CTA. `.page-shell` gained `pb-24 md:pb-6` so the bar never covers the last card.
+- **Responsive activity** — the ≤400-row practice scan moved to a `cache()`d `getStudentPracticeEvents` (`lib/student-practice-events.ts`) shared by both presentations (one query). Desktop keeps the full 12-week `StudentActivityHeatmap` (`hidden md:block`); mobile gets a compact current-week strip (`components/student-week-strip.tsx`, `md:hidden`) under the stat trio — `buildActivityCalendar(events, 1)` yields the Mon→Sun week, filled teal = active, today ringed, no new data source.
+- **Segmented topic result bars** (`components/topic-segment-bar.tsx` + pure, unit-tested `lib/topic-segments.ts`) — a slim multi-segment bar under each result title on the student dashboard rows and the result page, built from the existing `topic_breakdown.percent`: teal ≥75, muted-teal 60–74, ochre <60 (never red). Empty breakdown renders nothing.
 
 ## Recent changes (2026-07-22 middleware, PWA, dark mode, landing)
 
