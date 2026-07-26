@@ -2,7 +2,15 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-23** (mobile bottom tab bar, responsive activity strip, segmented result bars — see [Recent changes](#recent-changes-2026-07-23-mobile-bottom-nav-activity-strip-result-bars)).
+**Last updated: 2026-07-26** (key-free PDF extraction now handles `Q1)` / `1)` numbering + lowercase options; extract feedback surfaced at the button — see [Recent changes](#recent-changes-2026-07-26-pdf-extraction-robustness)).
+
+## Recent changes (2026-07-26 PDF extraction robustness)
+
+Fix for "uploaded a paper, clicked Extract, nothing happened." Root cause: the key-free heuristic (`lib/extract.ts`, used whenever `AI_MOCK_MODE`/no Anthropic key) only recognized questions numbered `"1. "` (digit-period-space) with uppercase options, so papers numbered `Q1)` / `1)` (and/or lowercase `(a)` options) parsed to **zero** questions — and the resulting error rendered **buried in the Review & save card**, far below the Extract button, so it looked silent.
+
+- `QUESTION_MARKER` broadened to `/(?:[Qq]\.?\s*)?(\d{1,3})[.)]\s+/g` — accepts `1.`, `1)`, `Q1.`, `Q1)`, `Q.1)`. Still sequential-only (conservative). `OPTION_MARKER` now `[A-Ea-e]` + `[).]` (lowercase + period-delimited options). Verified against a real generated AML-style PDF through the actual `unpdf` → `extractDraftQuestions` pipeline: 0 → 2 questions. +2 unit tests (`tests/extract.test.ts`, 46 total).
+- `lib/ai.ts` extraction error is now specific: distinguishes a **scanned/no-text PDF** (needs an Anthropic key or manual entry) from a **format the heuristic missed** (hint: number questions `1.` / `1)` / `Q1)`).
+- `components/teacher/paper-builder.tsx` renders the extract result (success/error) **inline under the Extract button**, not only in the Review card. Still key-free-only for images/scans — those need the AI path (`ANTHROPIC_API_KEY`).
 
 ## What this project is
 

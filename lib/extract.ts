@@ -2,12 +2,14 @@ import type { DraftQuestion } from "@/lib/ai";
 
 // Pure, testable heuristics that turn raw question-paper text (typically extracted from a PDF,
 // where line breaks are usually lost) into editable draft questions. It works on a continuous
-// text stream by locating numbered question markers ("12. ") and lettered option markers
-// ("A)" / "(A)"), not newlines. Deliberately conservative: it only emits sequentially-numbered
-// questions and leaves anything ambiguous for the teacher to fix in Review.
-
-const QUESTION_MARKER = /(\d{1,3})\.\s+/g;
-const OPTION_MARKER = /\(?([A-E])\)\s+/g;
+// text stream by locating numbered question markers and lettered option markers, not newlines.
+// Deliberately conservative: it only emits sequentially-numbered questions and leaves anything
+// ambiguous for the teacher to fix in Review.
+//
+// Question numbering: "1. ", "1) ", "Q1. ", "Q1) ", "Q.1) " (optional "Q"/"Q." prefix, then the
+// number, then "." or ")"). Options: "A) ", "(A) ", "A. ", and their lowercase forms.
+const QUESTION_MARKER = /(?:[Qq]\.?\s*)?(\d{1,3})[.)]\s+/g;
+const OPTION_MARKER = /\(?([A-Ea-e])[).]\s+/g;
 const ANSWER_KEY_SPLIT = /\banswer\s*key\b/i;
 
 type RawOption = { letter: string; text: string };

@@ -64,6 +64,27 @@ describe("extractDraftQuestions", () => {
     assert.deepEqual(extractDraftQuestions(""), []);
     assert.deepEqual(extractDraftQuestions("just a paragraph with no question numbers"), []);
   });
+
+  it("handles Q-prefixed numbering and lowercase parenthesised options", () => {
+    const text =
+      "Q1) Which document is a valid ID? (a) Utility bill (b) Passport (c) Selfie (d) None " +
+      "Q2) Define a Politically Exposed Person.";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 2);
+    assert.equal(questions[0].question_type, "mcq");
+    assert.equal(questions[0].question_text, "Which document is a valid ID?");
+    assert.deepEqual(questions[0].options, ["Utility bill", "Passport", "Selfie", "None"]);
+    assert.equal(questions[1].question_type, "subjective");
+    assert.equal(questions[1].question_text, "Define a Politically Exposed Person.");
+  });
+
+  it("handles paren-style numbering (1) 2)) and period-style options (A. B.)", () => {
+    const text = "1) What is 2+2? A. 3 B. 4 C. 5 D. 6 2) Name a prime number.";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 2);
+    assert.deepEqual(questions[0].options, ["3", "4", "5", "6"]);
+    assert.equal(questions[1].question_type, "subjective");
+  });
 });
 
 describe("parseAnswerKey", () => {

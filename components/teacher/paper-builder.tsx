@@ -19,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { DraftQuestion } from "@/lib/ai";
 import { applyAnswerKey } from "@/lib/extract";
+import { cn } from "@/lib/utils";
 
 type BatchOption = {
   id: string;
@@ -187,6 +188,20 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
               <UploadCloud className="h-4 w-4" aria-hidden="true" />
               Extract questions
             </SubmitButton>
+            {extractState.message ? (
+              <p
+                className={cn(
+                  "rounded-md border p-3 text-sm",
+                  extractState.ok
+                    ? "border-primary/30 bg-secondary/40"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                )}
+              >
+                {extractState.ok
+                  ? `${extractState.message} — review the questions below.`
+                  : extractState.message}
+              </p>
+            ) : null}
           </form>
         </Card>
       </div>

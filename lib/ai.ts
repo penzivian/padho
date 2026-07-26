@@ -109,8 +109,11 @@ async function extractQuestionsLocally(file: File): Promise<DraftQuestion[]> {
 
   const questions = extractDraftQuestions(merged);
   if (questions.length === 0) {
+    const looksScanned = merged.replace(/\s/g, "").length < 30;
     throw new Error(
-      "Read the PDF but couldn't detect a question layout automatically. Add questions manually, or try a text-based PDF with numbered questions."
+      looksScanned
+        ? "This PDF has almost no selectable text — it looks scanned. Key-free extraction needs a text PDF; add an Anthropic API key for image/scan support, or enter questions manually."
+        : "Read the PDF but couldn't detect numbered questions. It works best when questions are numbered like 1. / 1) / Q1). Enter them manually, or add an Anthropic API key for AI extraction."
     );
   }
   return questions;
