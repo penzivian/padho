@@ -125,6 +125,54 @@ describe("grading", () => {
       Geometry: { earned: 2.5, possible: 7, percent: 35.71 }
     });
   });
+
+  it("credits a teacher's manual mark on a keyless MCQ instead of re-scoring it to 0", () => {
+    // A paper scheduled without an answer key: the MCQ cannot be auto-scored, so the
+    // teacher's approved mark is the only truth the snapshot may use.
+    const snapshot = buildProgressSnapshot([
+      {
+        questionId: "k1",
+        type: "mcq",
+        topic: "Civics",
+        maxMarks: 4,
+        correctAnswer: null,
+        studentAnswer: "Option C",
+        awardedMarks: 4
+      }
+    ]);
+
+    assert.equal(snapshot.scorePercent, 100);
+    assert.deepEqual(snapshot.topicBreakdown, {
+      Civics: { earned: 4, possible: 4, percent: 100 }
+    });
+  });
+
+  it("caps a manual MCQ mark at the question max and scores an ungraded keyless MCQ as 0", () => {
+    const snapshot = buildProgressSnapshot([
+      {
+        questionId: "k1",
+        type: "mcq",
+        topic: "Civics",
+        maxMarks: 2,
+        correctAnswer: null,
+        studentAnswer: "Option C",
+        awardedMarks: 9 // fat-fingered override — clamped to maxMarks
+      },
+      {
+        questionId: "k2",
+        type: "mcq",
+        topic: "Civics",
+        maxMarks: 2,
+        correctAnswer: null,
+        studentAnswer: "Option A",
+        awardedMarks: null // not yet graded
+      }
+    ]);
+
+    assert.deepEqual(snapshot.topicBreakdown, {
+      Civics: { earned: 2, possible: 4, percent: 50 }
+    });
+  });
 });
 
 describe("AI JSON extraction", () => {

@@ -84,9 +84,9 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
                 {keylessCount > 0 ? (
                   <span
                     className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800"
-                    title={`${keylessCount} MCQ${keylessCount === 1 ? "" : "s"} missing an answer key — add keys before scheduling`}
+                    title={`${keylessCount} MCQ${keylessCount === 1 ? "" : "s"} have no answer key — you can still schedule this paper, but you'll grade those by hand. Add keys to auto-score them.`}
                   >
-                    needs answer key
+                    manual grading
                   </span>
                 ) : null}
                 <span className="rounded-md bg-secondary px-2 py-1 text-xs">{paper.source}</span>

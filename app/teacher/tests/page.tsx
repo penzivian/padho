@@ -9,6 +9,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { requireProfile } from "@/lib/auth";
+import { findKeylessMcqs } from "@/lib/grading";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ type PaperOption = {
   title: string;
   batch_id: string;
   batches: { name: string } | null;
+  questions: { question_type: "mcq" | "subjective"; correct_answer: string | null }[];
 };
 
 type TestRow = {
@@ -45,7 +47,7 @@ export default async function TeacherTestsPage({ searchParams }: TestsPageProps)
     supabase.from("batches").select("id,name").order("created_at", { ascending: false }),
     supabase
       .from("question_papers")
-      .select("id,title,batch_id,batches(name)")
+      .select("id,title,batch_id,batches(name),questions(question_type,correct_answer)")
       .order("created_at", { ascending: false }),
     supabase
       .from("tests")
@@ -87,11 +89,21 @@ export default async function TeacherTestsPage({ searchParams }: TestsPageProps)
           </FormField>
           <FormField htmlFor="question_paper_id" label="Paper">
             <Select id="question_paper_id" name="question_paper_id" required>
-              {papers.map((paper) => (
-                <option key={paper.id} value={paper.id}>
-                  {paper.title} · {paper.batches?.name ?? "Batch"}
-                </option>
-              ))}
+              {papers.map((paper) => {
+                const keyless = findKeylessMcqs(
+                  paper.questions.map((question) => ({
+                    type: question.question_type,
+                    correctAnswer: question.correct_answer
+                  }))
+                ).length;
+
+                return (
+                  <option key={paper.id} value={paper.id}>
+                    {paper.title} · {paper.batches?.name ?? "Batch"}
+                    {keyless > 0 ? ` · ${keyless} to grade by hand` : ""}
+                  </option>
+                );
+              })}
             </Select>
           </FormField>
           <FormField htmlFor="title" label="Title">
@@ -108,6 +120,10 @@ export default async function TeacherTestsPage({ searchParams }: TestsPageProps)
           <div className="flex items-end">
             <SubmitButton pendingText="Scheduling">Schedule</SubmitButton>
           </div>
+          <p className="script-note lg:col-span-5">
+            No answer key? Schedule anyway — MCQs without a key land in your grading queue
+            instead of auto-scoring.
+          </p>
         </form>
       </Card>
 

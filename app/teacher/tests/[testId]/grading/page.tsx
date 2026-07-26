@@ -31,6 +31,7 @@ type SubmissionRow = {
       question_type: "mcq" | "subjective";
       max_marks: number;
       rubric: string | null;
+      correct_answer: string | null;
     } | null;
   }[];
 };
@@ -56,7 +57,7 @@ export default async function GradingPage({ params }: GradingPageProps) {
   const { data } = await admin
     .from("test_submissions")
     .select(
-      "id,status,profiles(full_name,phone),answers(id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(question_text,question_type,max_marks,rubric))"
+      "id,status,profiles(full_name,phone),answers(id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(question_text,question_type,max_marks,rubric,correct_answer))"
     )
     .eq("test_id", params.testId)
     .order("submitted_at", { ascending: false });
@@ -125,6 +126,9 @@ export default async function GradingPage({ params }: GradingPageProps) {
               {submission.answers.map((answer, index) => {
                 const question = answer.questions;
                 const defaultMark = answer.awarded_marks ?? answer.ai_suggested_marks ?? 0;
+                // A keyless MCQ could not be auto-scored — it is here for the teacher to mark.
+                const keylessMcq =
+                  question?.question_type === "mcq" && !question.correct_answer?.trim();
 
                 return (
                   <div key={answer.id} className="rounded-lg border p-3">
@@ -135,8 +139,15 @@ export default async function GradingPage({ params }: GradingPageProps) {
                           {question?.question_type ?? "question"}
                         </p>
                       </div>
-                      <span className="rounded-md bg-muted px-2 py-1 text-xs">
-                        {question?.max_marks ?? 0} marks
+                      <span className="flex flex-wrap justify-end gap-1.5">
+                        {keylessMcq ? (
+                          <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                            no answer key · mark by hand
+                          </span>
+                        ) : null}
+                        <span className="rounded-md bg-muted px-2 py-1 text-xs">
+                          {question?.max_marks ?? 0} marks
+                        </span>
                       </span>
                     </div>
                     <div className="grid gap-3">

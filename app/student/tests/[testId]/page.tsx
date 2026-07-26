@@ -45,9 +45,37 @@ export default async function StudentTestPage({ params }: TestPageProps) {
   }
 
   const safeQuestions = (questions ?? []) as SafeQuestion[];
-  const endsAt = new Date(
-    new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000
-  ).toISOString();
+  const startsAtMs = new Date(test.scheduled_at).getTime();
+  const endsAt = new Date(startsAtMs + test.duration_minutes * 60_000).toISOString();
+
+  // The test row is visible from the moment it is scheduled, but questions are released
+  // only once it opens — so a student arriving early gets a waiting room, not a blank form.
+  if (Date.now() < startsAtMs) {
+    return (
+      <main className="page-shell max-w-3xl">
+        <div>
+          <h1 className="text-2xl font-semibold">{test.title}</h1>
+          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock3 className="h-4 w-4" aria-hidden="true" />
+            {formatDateTime(test.scheduled_at)} · {test.duration_minutes} min
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Not started yet</CardTitle>
+            <TestCountdown
+              endsAt={test.scheduled_at}
+              prefix="starts in "
+              expiredText="starting now"
+            />
+          </CardHeader>
+          <p className="text-sm text-muted-foreground">
+            Questions unlock when the test begins. Come back at the scheduled time.
+          </p>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="page-shell max-w-3xl">

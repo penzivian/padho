@@ -85,7 +85,6 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   const submissions = (submissionData ?? []) as SubmissionRow[];
   const progress = (progressData ?? []) as unknown as ProgressRow[];
   const submittedByTest = new Map(submissions.map((submission) => [submission.test_id, submission.status]));
-  const openTests = tests.filter((test) => !submittedByTest.has(test.id)).length;
   const averageScore = progress.length
     ? Math.round(progress.reduce((sum, snapshot) => sum + snapshot.score_percent, 0) / progress.length)
     : null;
@@ -95,19 +94,19 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   const latestResult = progress[0] ?? null;
   const resultDelta =
     latestResult && progress[1] ? Math.round(latestResult.score_percent - progress[1].score_percent) : null;
-  const firstOpenTestId = tests.find((test) => !submittedByTest.has(test.id))?.id ?? null;
-
   // "Today" hero: a live test wins; else the next upcoming test; else practice.
   const now = Date.now();
   const endOf = (test: TestRow) =>
     new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000;
-  const liveTest =
-    tests.find(
-      (test) =>
-        !submittedByTest.has(test.id) &&
-        new Date(test.scheduled_at).getTime() <= now &&
-        now <= endOf(test)
-    ) ?? null;
+  // Students now see scheduled tests before they open, so "takeable" means the window is
+  // actually open — an upcoming test is listed but not yet a call to action.
+  const isOpen = (test: TestRow) =>
+    !submittedByTest.has(test.id) &&
+    new Date(test.scheduled_at).getTime() <= now &&
+    now <= endOf(test);
+  const openTests = tests.filter(isOpen).length;
+  const firstOpenTestId = tests.find(isOpen)?.id ?? null;
+  const liveTest = tests.find(isOpen) ?? null;
   const nextTest = liveTest
     ? null
     : (tests
@@ -300,6 +299,8 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
         <div className="grid gap-4 md:grid-cols-2">
           {tests.slice(0, 4).map((test) => {
             const submitted = submittedByTest.get(test.id);
+            const open = isOpen(test);
+            const upcoming = !submitted && new Date(test.scheduled_at).getTime() > now;
             return (
               <Card key={test.id}>
                 <CardHeader>
@@ -310,10 +311,12 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                         ? "rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground"
                         : submitted === "pending"
                           ? "rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
-                          : "rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground"
+                          : open
+                            ? "rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground"
+                            : "rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                     }
                   >
-                    {submitted ?? "open"}
+                    {submitted ?? (open ? "open" : upcoming ? "upcoming" : "missed")}
                   </span>
                 </CardHeader>
                 <dl className="mb-4 grid gap-2 text-sm">
@@ -326,10 +329,16 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                     <dd>{formatDateTime(test.scheduled_at)}</dd>
                   </div>
                 </dl>
-                {!submitted ? (
+                {open ? (
                   <Button asChild variant={test.id === firstOpenTestId ? "default" : "outline"}>
                     <Link href={`/student/tests/${test.id}`}>Take test</Link>
                   </Button>
+                ) : upcoming ? (
+                  <TestCountdown
+                    endsAt={test.scheduled_at}
+                    prefix="starts in "
+                    expiredText="live now"
+                  />
                 ) : null}
               </Card>
             );

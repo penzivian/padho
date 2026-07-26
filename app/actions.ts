@@ -12,7 +12,7 @@ import {
   type DraftQuestion
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
-import { buildProgressSnapshot, findKeylessMcqs, scoreMcqAnswer } from "@/lib/grading";
+import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
 import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -374,34 +374,8 @@ export async function scheduleTestAction(formData: FormData) {
   const durationMinutes = readNumber(formData, "duration_minutes", 60);
   const title = readString(formData, "title");
 
-  // Guard: an MCQ without an answer key silently scores 0 for every student
-  // (scoreMcqAnswer returns 0 on a null key), so refuse to schedule such a paper.
-  // Numbering follows created_at order — the same order students see.
-  const { data: paperQuestions, error: questionsError } = await supabase
-    .from("questions")
-    .select("question_type,correct_answer")
-    .eq("question_paper_id", paperId)
-    .order("created_at", { ascending: true });
-
-  if (questionsError) {
-    redirect(`/teacher/tests?error=${encodeURIComponent(questionsError.message)}`);
-  }
-
-  const keyless = findKeylessMcqs(
-    (paperQuestions ?? []).map((question) => ({
-      type: question.question_type,
-      correctAnswer: question.correct_answer
-    }))
-  );
-
-  if (keyless.length > 0) {
-    redirect(
-      `/teacher/tests?error=${encodeURIComponent(
-        `Questions ${keyless.join(", ")} are MCQs with no answer key. Add answer keys to the paper before scheduling.`
-      )}`
-    );
-  }
-
+  // A paper with keyless MCQs is deliberately allowed here: those questions are routed to
+  // manual grading at submit time (see submitTestAction) rather than silently auto-scoring 0.
   const { error } = await supabase.from("tests").insert({
     batch_id: batchId,
     question_paper_id: paperId,
@@ -438,7 +412,11 @@ export async function submitTestAction(formData: FormData) {
 
   if (testError) redirect(`/student?error=${encodeURIComponent(testError.message)}`);
 
-  const endsAt = new Date(test.scheduled_at).getTime() + test.duration_minutes * 60_000;
+  // Students can now SEE an upcoming test (RLS shows the row from the moment it is
+  // scheduled), so the open/closed window is enforced here rather than by the tests policy.
+  const startsAt = new Date(test.scheduled_at).getTime();
+  const endsAt = startsAt + test.duration_minutes * 60_000;
+  if (Date.now() < startsAt) redirect("/student?error=Test%20has%20not%20started%20yet");
   if (Date.now() > endsAt) redirect("/student?error=Test%20time%20has%20ended");
 
   const { data: existing } = await admin
@@ -460,14 +438,19 @@ export async function submitTestAction(formData: FormData) {
     redirect(`/student?error=${encodeURIComponent(questionError?.message || "Questions unavailable")}`);
   }
 
-  const hasSubjective = questions.some((question) => question.question_type === "subjective");
+  // Anything the server cannot score on its own goes to the teacher: subjective answers,
+  // and MCQs whose paper carries no answer key (the teacher grades those by hand).
+  const needsTeacher = questions.some(
+    (question) =>
+      question.question_type === "subjective" || !question.correct_answer?.trim()
+  );
   const { data: submission, error: submissionError } = await admin
     .from("test_submissions")
     .insert({
       test_id: testId,
       student_id: user.id,
       submitted_at: new Date().toISOString(),
-      status: hasSubjective ? "pending" : "graded"
+      status: needsTeacher ? "pending" : "graded"
     })
     .select("id")
     .single();
@@ -476,8 +459,9 @@ export async function submitTestAction(formData: FormData) {
 
   const answerRows: Insert<"answers">[] = questions.map((question) => {
     const studentAnswer = readString(formData, `answer_${question.id}`);
+    // null (not 0) for a keyless MCQ — 0 would read as a finalized wrong answer.
     const awardedMarks =
-      question.question_type === "mcq"
+      question.question_type === "mcq" && question.correct_answer?.trim()
         ? scoreMcqAnswer(studentAnswer, question.correct_answer, question.max_marks)
         : null;
 
@@ -492,7 +476,7 @@ export async function submitTestAction(formData: FormData) {
   const { error: answerError } = await admin.from("answers").insert(answerRows);
   if (answerError) redirect(`/student?error=${encodeURIComponent(answerError.message)}`);
 
-  if (!hasSubjective) await createProgressSnapshot(submission.id);
+  if (!needsTeacher) await createProgressSnapshot(submission.id);
 
   revalidatePath("/student");
   redirect("/student");

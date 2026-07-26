@@ -120,9 +120,9 @@ export default async function TeacherHomePage() {
       action: "Grade"
     })),
     ...keylessPapers.map((paper) => ({
-      text: `${paper.title} has MCQs without answer keys`,
+      text: `${paper.title} has MCQs without answer keys — add keys to auto-score them`,
       href: "/teacher/papers",
-      action: "Fix"
+      action: "Add keys"
     })),
     ...liveTests.map((test) => ({
       text: `${test.title} is live right now`,

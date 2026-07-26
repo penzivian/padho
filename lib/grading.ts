@@ -26,8 +26,8 @@ export function scoreMcqAnswer(studentAnswer: string, correctAnswer: string | nu
   return studentAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase() ? maxMarks : 0;
 }
 
-// 1-based positions of MCQs that have no answer key. Such questions auto-score 0 for
-// every student, so callers must block scheduling (and warn in the UI) until keys exist.
+// 1-based positions of MCQs that have no answer key. These cannot be auto-scored, so they
+// are routed to the teacher's grading queue; the UI uses this to say so up front.
 export function findKeylessMcqs(
   questions: { type: "mcq" | "subjective"; correctAnswer: string | null }[]
 ) {
@@ -37,12 +37,17 @@ export function findKeylessMcqs(
   }, []);
 }
 
+// A persisted mark always wins: for a keyed MCQ it is the auto-score written at submit
+// time, and for a keyless one it is the teacher's manual mark. Only fall back to
+// re-deriving from the key when nothing has been recorded yet.
 export function scoreSubmission(inputs: AnswerInput[]) {
   return inputs.map((answer) => {
     const awardedMarks =
-      answer.type === "mcq"
-        ? scoreMcqAnswer(answer.studentAnswer, answer.correctAnswer, answer.maxMarks)
-        : normalizeSuggestedMark(answer.awardedMarks ?? 0, answer.maxMarks);
+      answer.awardedMarks != null
+        ? normalizeSuggestedMark(answer.awardedMarks, answer.maxMarks)
+        : answer.type === "mcq"
+          ? scoreMcqAnswer(answer.studentAnswer, answer.correctAnswer, answer.maxMarks)
+          : 0;
 
     return { ...answer, awardedMarks };
   });
