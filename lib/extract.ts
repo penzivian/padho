@@ -9,7 +9,11 @@ import type { DraftQuestion } from "@/lib/ai";
 // Question numbering: "1. ", "1) ", "Q1. ", "Q1) ", "Q.1) " (optional "Q"/"Q." prefix, then the
 // number, then "." or ")"). Options: "A) ", "(A) ", "A. ", and their lowercase forms.
 const QUESTION_MARKER = /(?:[Qq]\.?\s*)?(\d{1,3})[.)]\s+/g;
-const OPTION_MARKER = /\(?([A-Ea-e])[).]\s+/g;
+// Group 1 is a leading boundary (start-of-string or a non-letter) that keeps prose
+// like "etc. " / "Ltd. " / "Inc. " from registering as an option marker now that a
+// bare "c." form is accepted. Captured rather than a lookbehind so the regex also
+// parses on older browser engines — this module is imported by a client component.
+const OPTION_MARKER = /(^|[^A-Za-z])\(?([A-Ea-e])[).]\s+/g;
 const ANSWER_KEY_SPLIT = /\banswer\s*key\b/i;
 
 type RawOption = { letter: string; text: string };
@@ -36,22 +40,65 @@ function splitOptions(block: string): { questionText: string; options: RawOption
   const re = new RegExp(OPTION_MARKER.source, "g");
   let match: RegExpExecArray | null;
   while ((match = re.exec(block)) !== null) {
-    markers.push({ letter: match[1].toUpperCase(), start: match.index, end: re.lastIndex });
+    // Skip the captured boundary char so the marker starts at "(" / the letter.
+    markers.push({
+      letter: match[2].toUpperCase(),
+      start: match.index + match[1].length,
+      end: re.lastIndex
+    });
   }
 
-  if (markers.length < 2 || markers[0].letter !== "A") {
+  // Take the longest run of *adjacent* markers lettered A, B, C, … rather than
+  // anchoring on the first "A": a stem can legitimately contain "'A. Rao" or "(a)"
+  // before the real option block, and that would otherwise hijack the split.
+  let best: typeof markers = [];
+  for (let i = 0; i < markers.length; i += 1) {
+    if (markers[i].letter !== "A") continue;
+    const run = [markers[i]];
+    for (let j = i + 1; j < markers.length; j += 1) {
+      if (letterIndex(markers[j].letter) !== run.length) break;
+      run.push(markers[j]);
+    }
+    if (run.length > best.length) best = run;
+  }
+
+  if (best.length < 2) {
     return { questionText: block.trim(), options: [] };
   }
 
-  const questionText = block.slice(0, markers[0].start).trim();
-  const options = markers.map((marker, index) => {
-    const textEnd = index + 1 < markers.length ? markers[index + 1].start : block.length;
+  const questionText = block.slice(0, best[0].start).trim();
+  const options = best.map((marker, index) => {
+    const textEnd = index + 1 < best.length ? best[index + 1].start : block.length;
     return { letter: marker.letter, text: block.slice(marker.end, textEnd).trim() };
   });
   return { questionText, options };
 }
 
-function toDraftQuestion(block: string, answerLetter?: string): DraftQuestion | null {
+// Structural furniture that sits *between* questions and would otherwise be swallowed
+// by the preceding question's last option: difficulty tags ("[ Hard ]"), section
+// headers ("SECTION B | AML / KYC ..."), and end-of-paper rules. Uppercase-only
+// SECTION and 2+ dashes keep prose ("Section 5 of the Act", "analysts — Kiran")
+// from being truncated.
+// `[\s\S]*` rather than `.*` + the /s flag, which needs an ES2018 target.
+const TRAILING_NOISE = [
+  /\s*\[\s*(?:very\s+)?(?:easy|medium|hard|difficult)\s*\]\s*$/i,
+  /\s*SECTION\s+[A-Z0-9]+\s*[|(:–—-][\s\S]*$/,
+  /\s*END\s+OF\s+(?:THE\s+)?(?:QUESTION\s+)?PAPER[\s\S]*$/i,
+  /\s*[—–]{2,}[\s\S]*$/
+];
+
+function stripBlockNoise(block: string): string {
+  let out = block.trim();
+  for (let pass = 0; pass < 5; pass += 1) {
+    const before = out;
+    for (const re of TRAILING_NOISE) out = out.replace(re, "").trim();
+    if (out === before) break;
+  }
+  return out;
+}
+
+function toDraftQuestion(rawBlock: string, answerLetter?: string): DraftQuestion | null {
+  const block = stripBlockNoise(rawBlock);
   const { questionText, options } = splitOptions(block);
   if (!questionText) return null;
 
@@ -81,19 +128,12 @@ function toDraftQuestion(block: string, answerLetter?: string): DraftQuestion | 
   };
 }
 
-export function extractDraftQuestions(text: string): DraftQuestion[] {
-  if (!text || !text.trim()) return [];
+type QuestionMarker = { number: number; index: number; end: number };
 
-  // Collapse all whitespace (PDF extraction often drops/garbles newlines) into single spaces.
-  const flat = text.replace(/\s+/g, " ").trim();
-
-  // Split off an answer-key section, if the document includes one.
-  const keyMatch = ANSWER_KEY_SPLIT.exec(flat);
-  const body = keyMatch ? flat.slice(0, keyMatch.index) : flat;
-  const answerKey = keyMatch ? parseAnswerKey(flat.slice(keyMatch.index)) : {};
-
-  // Keep only sequentially-numbered markers (1, 2, 3, ...) so stray "N." inside a stem is ignored.
-  const markers: { number: number; index: number; end: number }[] = [];
+// Locate sequentially-numbered question markers (1, 2, 3, …) so a stray "N." inside
+// a stem, a cover page, or an instructions block can't start or derail the sequence.
+function findQuestionMarkers(body: string): QuestionMarker[] {
+  const markers: QuestionMarker[] = [];
   const re = new RegExp(QUESTION_MARKER.source, "g");
   let match: RegExpExecArray | null;
   let expected = 1;
@@ -104,6 +144,35 @@ export function extractDraftQuestions(text: string): DraftQuestion[] {
       expected += 1;
     }
   }
+  return markers;
+}
+
+// Split off a trailing answer-key section — but only a real one. Papers routinely
+// *mention* the phrase in their instructions ("the answer key is supplied as a
+// separate document"), and splitting there would discard the entire paper. So a
+// candidate only counts when questions already precede it and the text after it
+// actually parses as a key.
+function splitAnswerKeySection(flat: string): { body: string; answerKey: Record<number, string> } {
+  const re = new RegExp(ANSWER_KEY_SPLIT.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(flat)) !== null) {
+    const before = flat.slice(0, match.index);
+    const answerKey = parseAnswerKey(flat.slice(match.index));
+    if (findQuestionMarkers(before).length > 0 && Object.keys(answerKey).length >= 2) {
+      return { body: before, answerKey };
+    }
+  }
+  return { body: flat, answerKey: {} };
+}
+
+export function extractDraftQuestions(text: string): DraftQuestion[] {
+  if (!text || !text.trim()) return [];
+
+  // Collapse all whitespace (PDF extraction often drops/garbles newlines) into single spaces.
+  const flat = text.replace(/\s+/g, " ").trim();
+
+  const { body, answerKey } = splitAnswerKeySection(flat);
+  const markers = findQuestionMarkers(body);
 
   const questions: DraftQuestion[] = [];
   for (let i = 0; i < markers.length; i += 1) {

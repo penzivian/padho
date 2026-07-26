@@ -78,6 +78,58 @@ describe("extractDraftQuestions", () => {
     assert.equal(questions[1].question_text, "Define a Politically Exposed Person.");
   });
 
+  it("ignores an 'answer key' mentioned in the instructions instead of truncating the paper", () => {
+    // Real papers say things like "the answer key is supplied as a separate document"
+    // in their preamble; splitting there would discard every question.
+    const text =
+      "Total Questions 2. Instructions: Attempt all questions. The answer key is supplied " +
+      "as a separate document; do not open it until the exam ends. " +
+      "Q1. What is 2+2? (A) 3 (B) 4 (C) 5 (D) 6 " +
+      "Q2. Name a prime number.";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 2);
+    assert.equal(questions[0].question_text, "What is 2+2?");
+    assert.equal(questions[1].question_text, "Name a prime number.");
+  });
+
+  it("still honours a real trailing answer key (questions before it, pairs after)", () => {
+    const text =
+      "Q1. What is 2+2? (A) 3 (B) 4 (C) 5 (D) 6 Q2. Capital of France? (A) Berlin (B) Paris " +
+      "(C) Rome (D) Madrid Answer Key 1. B 2. B";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 2);
+    assert.equal(questions[0].correct_answer, "4");
+    assert.equal(questions[1].correct_answer, "Paris");
+  });
+
+  it("strips difficulty tags, section headers and end-of-paper rules from blocks", () => {
+    const text =
+      "SECTION A | Reasoning (Q1–Q2 • 2 marks) [ Easy ] Q1. What is 2+2? (A) 3 (B) 4 (C) 5 (D) 6 " +
+      "[ Medium ] Q2. Pick one. (A) w (B) x (C) y (D) z ——— END OF QUESTION PAPER ———";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 2);
+    assert.deepEqual(questions[0].options, ["3", "4", "5", "6"]);
+    assert.deepEqual(questions[1].options, ["w", "x", "y", "z"]);
+  });
+
+  it("does not let an 'A.' inside the stem hijack the option block", () => {
+    const text =
+      "Q1. Directors are stored as 'A. Rao, S. Mehta'. Which rule does this violate? " +
+      "(A) First Normal Form (B) Second Normal Form (C) Third Normal Form (D) None";
+    const questions = extractDraftQuestions(text);
+    assert.equal(questions.length, 1);
+    assert.equal(
+      questions[0].question_text,
+      "Directors are stored as 'A. Rao, S. Mehta'. Which rule does this violate?"
+    );
+    assert.deepEqual(questions[0].options, [
+      "First Normal Form",
+      "Second Normal Form",
+      "Third Normal Form",
+      "None"
+    ]);
+  });
+
   it("handles paren-style numbering (1) 2)) and period-style options (A. B.)", () => {
     const text = "1) What is 2+2? A. 3 B. 4 C. 5 D. 6 2) Name a prime number.";
     const questions = extractDraftQuestions(text);
