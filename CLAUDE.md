@@ -2,7 +2,17 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-27** (scheduled tests now reach students before they start; papers without an answer key can be scheduled and graded by hand — see [Recent changes](#recent-changes-2026-07-27-test-visibility--manual-grading)).
+**Last updated: 2026-07-28** (schedule times are now pinned to IST instead of the server's zone — see [Recent changes](#recent-changes-2026-07-28-schedule-timezone)).
+
+## Recent changes (2026-07-28 schedule timezone)
+
+**A test scheduled for 12:30 AM went live at 6:00 AM.** `<input type="datetime-local">` submits a bare wall-clock string with no timezone, and `scheduleTestAction` did `new Date(value).toISOString()` — which resolves that string in **the server process's** zone. Node on Vercel runs UTC, so `2026-07-28T00:30` was stored as `00:30Z` (= 06:00 IST); the same input on the owner's Mac (IST) stored `19:00Z`. Same form, two different instants. `formatDateTime` had the mirror defect: `Intl.DateTimeFormat("en-IN")` with no `timeZone` renders in the *renderer's* zone, so a server component printed UTC while the browser printed IST for the same row.
+
+- **`lib/time.ts`** is now the single source of truth: `APP_TIME_ZONE = "Asia/Kolkata"` plus `scheduleInputToUtcIso`, which resolves a `datetime-local` value in IST (via an `Intl` offset probe, two-pass so it stays DST-correct if the zone ever changes) and returns an absolute UTC instant. Malformed input returns `null` and the action rejects rather than storing a bad instant.
+- `formatDateTime` pins `timeZone: APP_TIME_ZONE`, so server and client agree and the displayed time always means what the teacher typed. **Every wall-clock time in the app is IST** — the product serves Indian coaching institutes; do not reintroduce zone-dependent parsing or formatting.
+- Schedule field is labelled "Schedule (IST)".
+- Tests 52 → 55, and the suite is run under `TZ=UTC` and `TZ=America/New_York` as well as IST — the timezone tests fail against the old code under UTC, which is the case that shipped.
+- The one already-affected live row (`PSAT sample`) was corrected by hand to the intended instant. Rows created before this fix on Vercel are 5h30m late; rows created on a local IST machine are correct.
 
 ## Recent changes (2026-07-27 test visibility + manual grading)
 

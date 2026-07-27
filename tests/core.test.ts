@@ -9,7 +9,8 @@ import {
   scoreMcqAnswer
 } from "@/lib/grading";
 import { homePathForRole } from "@/lib/routes";
-import { generateInviteCode } from "@/lib/utils";
+import { scheduleInputToUtcIso } from "@/lib/time";
+import { formatDateTime, generateInviteCode } from "@/lib/utils";
 
 describe("invite codes", () => {
   it("generates compact uppercase codes without ambiguous letters", () => {
@@ -172,6 +173,27 @@ describe("grading", () => {
     assert.deepEqual(snapshot.topicBreakdown, {
       Civics: { earned: 2, possible: 4, percent: 50 }
     });
+  });
+});
+
+describe("schedule input timezone", () => {
+  it("reads a datetime-local value as IST, not as the running process's zone", () => {
+    // The reported bug: a teacher picked 12:30 AM and the test went live at 6:00 AM,
+    // because Vercel's Node runs in UTC and resolved the bare string there.
+    assert.equal(scheduleInputToUtcIso("2026-07-28T00:30"), "2026-07-27T19:00:00.000Z");
+    assert.equal(scheduleInputToUtcIso("2026-07-28T00:30:00"), "2026-07-27T19:00:00.000Z");
+  });
+
+  it("round-trips back to the wall clock the teacher typed", () => {
+    const iso = scheduleInputToUtcIso("2026-08-05T10:00");
+    assert.ok(iso);
+    assert.equal(formatDateTime(iso), "5 Aug 2026, 10:00 am");
+  });
+
+  it("rejects a malformed value instead of storing a bad instant", () => {
+    assert.equal(scheduleInputToUtcIso(""), null);
+    assert.equal(scheduleInputToUtcIso("tomorrow"), null);
+    assert.equal(scheduleInputToUtcIso("2026-08-05"), null);
   });
 });
 

@@ -1,15 +1,20 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import { APP_TIME_ZONE } from "@/lib/time";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function formatDateTime(value: string | null) {
   if (!value) return "Not scheduled";
+  // Pinned to IST: without an explicit timeZone this renders in the *renderer's* zone, so a
+  // server component printed UTC on Vercel while the browser printed IST for the same row.
   return new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: APP_TIME_ZONE
   }).format(new Date(value));
 }
 

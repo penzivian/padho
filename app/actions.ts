@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
+import { scheduleInputToUtcIso } from "@/lib/time";
 import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -374,13 +375,20 @@ export async function scheduleTestAction(formData: FormData) {
   const durationMinutes = readNumber(formData, "duration_minutes", 60);
   const title = readString(formData, "title");
 
+  // The form sends a bare wall-clock string with no timezone; resolve it in IST rather than
+  // in whatever zone this process happens to run in (UTC on Vercel, IST on a local Mac).
+  const scheduledAtUtc = scheduleInputToUtcIso(scheduledAt);
+  if (!scheduledAtUtc) {
+    redirect("/teacher/tests?error=Pick%20a%20valid%20date%20and%20time");
+  }
+
   // A paper with keyless MCQs is deliberately allowed here: those questions are routed to
   // manual grading at submit time (see submitTestAction) rather than silently auto-scoring 0.
   const { error } = await supabase.from("tests").insert({
     batch_id: batchId,
     question_paper_id: paperId,
     title,
-    scheduled_at: new Date(scheduledAt).toISOString(),
+    scheduled_at: scheduledAtUtc,
     duration_minutes: durationMinutes,
     status: "scheduled"
   });

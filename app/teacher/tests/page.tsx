@@ -113,7 +113,7 @@ export default async function TeacherTestsPage({ searchParams }: TestsPageProps)
             <Input id="duration_minutes" name="duration_minutes" type="number" min="1" defaultValue="60" />
           </FormField>
           <div className="grid gap-2 lg:col-span-4">
-            <FormField htmlFor="scheduled_at" label="Schedule">
+            <FormField htmlFor="scheduled_at" label="Schedule (IST)">
               <Input id="scheduled_at" name="scheduled_at" type="datetime-local" required />
             </FormField>
           </div>
