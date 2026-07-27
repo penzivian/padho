@@ -398,11 +398,12 @@ export async function scheduleTestAction(formData: FormData) {
   redirect("/teacher/tests");
 }
 
-export async function submitTestAction(formData: FormData) {
-  const { user } = await requireRole("student");
+// Shared gate for every attempt action: confirm the student can see the test through the
+// RLS-respecting client, then read the authoritative row with admin. Returns the test and
+// whether its window is open right now.
+async function loadAttemptTest(testId: string) {
   const supabase = createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
-  const testId = readString(formData, "test_id");
 
   const { data: visibleTest } = await supabase
     .from("tests")
@@ -410,63 +411,146 @@ export async function submitTestAction(formData: FormData) {
     .eq("id", testId)
     .maybeSingle();
 
-  if (!visibleTest) redirect("/student?error=Test%20is%20not%20available");
+  if (!visibleTest) return null;
 
-  const { data: test, error: testError } = await admin
+  const { data: test } = await admin
     .from("tests")
-    .select("id,batch_id,question_paper_id,scheduled_at,duration_minutes")
+    .select("id,batch_id,question_paper_id,scheduled_at,duration_minutes,closed_at")
     .eq("id", testId)
     .single();
 
-  if (testError) redirect(`/student?error=${encodeURIComponent(testError.message)}`);
+  if (!test) return null;
 
-  // Students can now SEE an upcoming test (RLS shows the row from the moment it is
-  // scheduled), so the open/closed window is enforced here rather than by the tests policy.
   const startsAt = new Date(test.scheduled_at).getTime();
   const endsAt = startsAt + test.duration_minutes * 60_000;
-  if (Date.now() < startsAt) redirect("/student?error=Test%20has%20not%20started%20yet");
-  if (Date.now() > endsAt) redirect("/student?error=Test%20time%20has%20ended");
+  const now = Date.now();
+
+  return {
+    test,
+    isOpen: !test.closed_at && now >= startsAt && now <= endsAt,
+    hasStarted: now >= startsAt
+  };
+}
+
+// Creates (or resumes) the student's attempt after they accept the instructions. The
+// submission row exists from this moment with submitted_at null, which is what marks it
+// in progress — so a refresh, a dead battery or a switched device resumes instead of losing
+// the paper. Every read that counts finished attempts filters submitted_at is not null.
+export async function startTestAction(formData: FormData) {
+  const { user } = await requireRole("student");
+  const admin = createSupabaseAdminClient();
+  const testId = readString(formData, "test_id");
+
+  const loaded = await loadAttemptTest(testId);
+  if (!loaded) redirect("/student?error=Test%20is%20not%20available");
+  if (!loaded.isOpen) {
+    redirect(`/student/tests/${testId}?error=${encodeURIComponent("This test is not open right now")}`);
+  }
 
   const { data: existing } = await admin
     .from("test_submissions")
-    .select("id,status")
+    .select("id,submitted_at")
     .eq("test_id", testId)
     .eq("student_id", user.id)
     .maybeSingle();
 
-  if (existing) redirect("/student?error=You%20already%20submitted%20this%20test");
-
-  const { data: questions, error: questionError } = await admin
-    .from("questions")
-    .select("*")
-    .eq("question_paper_id", test.question_paper_id)
-    .order("created_at", { ascending: true });
-
-  if (questionError || !questions) {
-    redirect(`/student?error=${encodeURIComponent(questionError?.message || "Questions unavailable")}`);
+  if (existing?.submitted_at) {
+    redirect("/student?error=You%20already%20submitted%20this%20test");
   }
+
+  if (!existing) {
+    const { error } = await admin
+      .from("test_submissions")
+      .insert({ test_id: testId, student_id: user.id, submitted_at: null, status: "pending" });
+
+    if (error) redirect(`/student?error=${encodeURIComponent(error.message)}`);
+  }
+
+  redirect(`/student/tests/${testId}/attempt`);
+}
+
+export type SaveAnswerResult = { ok: boolean; message?: string };
+
+// Per-question save, called by the CBT shell on Save & Next / Mark for Review / Clear.
+// Returns a value rather than redirecting so the shell can surface a failure inline without
+// losing the student's place.
+export async function saveAnswerAction(formData: FormData): Promise<SaveAnswerResult> {
+  const { user } = await requireRole("student");
+  const admin = createSupabaseAdminClient();
+  const testId = readString(formData, "test_id");
+  const questionId = readString(formData, "question_id");
+  const studentAnswer = readString(formData, "student_answer");
+  const markedForReview = readString(formData, "marked_for_review") === "true";
+
+  const loaded = await loadAttemptTest(testId);
+  if (!loaded) return { ok: false, message: "Test is not available." };
+  if (!loaded.isOpen) return { ok: false, message: "This test is closed." };
+
+  const { data: submission } = await admin
+    .from("test_submissions")
+    .select("id,submitted_at")
+    .eq("test_id", testId)
+    .eq("student_id", user.id)
+    .maybeSingle();
+
+  if (!submission) return { ok: false, message: "Start the test before answering." };
+  if (submission.submitted_at) return { ok: false, message: "You already submitted this test." };
+
+  // The question must belong to this test's paper — otherwise a crafted request could write
+  // an answer against any question in the database.
+  const { data: question } = await admin
+    .from("questions")
+    .select("id")
+    .eq("id", questionId)
+    .eq("question_paper_id", loaded.test.question_paper_id)
+    .maybeSingle();
+
+  if (!question) return { ok: false, message: "That question is not part of this test." };
+
+  const { error } = await admin.from("answers").upsert(
+    {
+      submission_id: submission.id,
+      question_id: questionId,
+      student_answer: studentAnswer,
+      marked_for_review: markedForReview
+    },
+    { onConflict: "submission_id,question_id" }
+  );
+
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
+// Turns an in-progress attempt into a finished one: fills in rows for questions never
+// visited, auto-scores keyed MCQs, routes anything needing a teacher to the grading queue,
+// and writes the snapshot when nothing does. Used by the student's submit, the timer's
+// auto-submit, and the teacher closing a test out from under live attempts.
+async function finalizeAttempt(submissionId: string, questionPaperId: string) {
+  const admin = createSupabaseAdminClient();
+
+  const [{ data: questions }, { data: savedAnswers }] = await Promise.all([
+    admin
+      .from("questions")
+      .select("id,question_type,correct_answer,max_marks")
+      .eq("question_paper_id", questionPaperId)
+      .order("created_at", { ascending: true }),
+    admin.from("answers").select("question_id,student_answer").eq("submission_id", submissionId)
+  ]);
+
+  if (!questions) throw new Error("Questions unavailable");
+
+  const answerByQuestion = new Map(
+    (savedAnswers ?? []).map((row) => [row.question_id, row.student_answer])
+  );
 
   // Anything the server cannot score on its own goes to the teacher: subjective answers,
   // and MCQs whose paper carries no answer key (the teacher grades those by hand).
   const needsTeacher = questions.some(
-    (question) =>
-      question.question_type === "subjective" || !question.correct_answer?.trim()
+    (question) => question.question_type === "subjective" || !question.correct_answer?.trim()
   );
-  const { data: submission, error: submissionError } = await admin
-    .from("test_submissions")
-    .insert({
-      test_id: testId,
-      student_id: user.id,
-      submitted_at: new Date().toISOString(),
-      status: needsTeacher ? "pending" : "graded"
-    })
-    .select("id")
-    .single();
-
-  if (submissionError) redirect(`/student?error=${encodeURIComponent(submissionError.message)}`);
 
   const answerRows: Insert<"answers">[] = questions.map((question) => {
-    const studentAnswer = readString(formData, `answer_${question.id}`);
+    const studentAnswer = answerByQuestion.get(question.id) ?? "";
     // null (not 0) for a keyless MCQ — 0 would read as a finalized wrong answer.
     const awardedMarks =
       question.question_type === "mcq" && question.correct_answer?.trim()
@@ -474,20 +558,125 @@ export async function submitTestAction(formData: FormData) {
         : null;
 
     return {
-      submission_id: submission.id,
+      submission_id: submissionId,
       question_id: question.id,
       student_answer: studentAnswer,
       awarded_marks: awardedMarks
     };
   });
 
-  const { error: answerError } = await admin.from("answers").insert(answerRows);
-  if (answerError) redirect(`/student?error=${encodeURIComponent(answerError.message)}`);
+  const { error: answerError } = await admin
+    .from("answers")
+    .upsert(answerRows, { onConflict: "submission_id,question_id" });
 
-  if (!needsTeacher) await createProgressSnapshot(submission.id);
+  if (answerError) throw answerError;
+
+  const { error: submissionError } = await admin
+    .from("test_submissions")
+    .update({ submitted_at: new Date().toISOString(), status: needsTeacher ? "pending" : "graded" })
+    .eq("id", submissionId);
+
+  if (submissionError) throw submissionError;
+
+  if (!needsTeacher) await createProgressSnapshot(submissionId);
+}
+
+export async function submitTestAction(formData: FormData) {
+  const { user } = await requireRole("student");
+  const admin = createSupabaseAdminClient();
+  const testId = readString(formData, "test_id");
+
+  const loaded = await loadAttemptTest(testId);
+  if (!loaded) redirect("/student?error=Test%20is%20not%20available");
+  if (!loaded.hasStarted) redirect("/student?error=Test%20has%20not%20started%20yet");
+
+  const { data: submission } = await admin
+    .from("test_submissions")
+    .select("id,submitted_at")
+    .eq("test_id", testId)
+    .eq("student_id", user.id)
+    .maybeSingle();
+
+  if (!submission) redirect("/student?error=You%20did%20not%20start%20this%20test");
+  if (submission.submitted_at) redirect("/student?error=You%20already%20submitted%20this%20test");
+
+  // Deliberately no window check here: the window closing (or the teacher closing the test)
+  // is exactly when an in-flight attempt most needs to be banked. Answers were already saved
+  // per question while the test was open, so nothing new can be smuggled in at this point.
+  try {
+    await finalizeAttempt(submission.id, loaded.test.question_paper_id);
+  } catch (error) {
+    redirect(`/student?error=${encodeURIComponent(errorMessage(error))}`);
+  }
 
   revalidatePath("/student");
-  redirect("/student");
+  redirect(`/student?submitted=${testId}`);
+}
+
+export async function rescheduleTestAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const testId = readString(formData, "test_id");
+  const scheduledAt = readString(formData, "scheduled_at");
+  const durationMinutes = readNumber(formData, "duration_minutes", 60);
+
+  const scheduledAtUtc = scheduleInputToUtcIso(scheduledAt);
+  if (!scheduledAtUtc) redirect("/teacher/tests?error=Pick%20a%20valid%20date%20and%20time");
+
+  // The RLS-respecting client is the gate: tests_update_teacher already restricts this to
+  // the owning teacher, so no admin client is needed.
+  const { error } = await supabase
+    .from("tests")
+    .update({ scheduled_at: scheduledAtUtc, duration_minutes: durationMinutes, closed_at: null })
+    .eq("id", testId);
+
+  if (error) redirect(`/teacher/tests?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/teacher/tests");
+  revalidatePath("/student");
+  redirect("/teacher/tests");
+}
+
+// Closing ends the test immediately. Any attempt still in progress is banked rather than
+// abandoned — otherwise those students' answers would sit unsubmitted forever and never
+// reach the teacher's grading queue.
+export async function closeTestAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
+  const testId = readString(formData, "test_id");
+
+  const { data: visibleTest } = await supabase
+    .from("tests")
+    .select("id,question_paper_id")
+    .eq("id", testId)
+    .maybeSingle();
+
+  if (!visibleTest) redirect("/teacher/tests?error=Test%20not%20available");
+
+  const { error } = await supabase
+    .from("tests")
+    .update({ closed_at: new Date().toISOString() })
+    .eq("id", testId);
+
+  if (error) redirect(`/teacher/tests?error=${encodeURIComponent(error.message)}`);
+
+  const { data: inProgress } = await admin
+    .from("test_submissions")
+    .select("id")
+    .eq("test_id", testId)
+    .is("submitted_at", null);
+
+  try {
+    for (const submission of inProgress ?? []) {
+      await finalizeAttempt(submission.id, visibleTest.question_paper_id);
+    }
+  } catch (finalizeError) {
+    redirect(`/teacher/tests?error=${encodeURIComponent(errorMessage(finalizeError))}`);
+  }
+
+  revalidatePath("/teacher/tests");
+  revalidatePath("/student");
+  redirect("/teacher/tests");
 }
 
 export async function requestGradeSuggestionsAction(formData: FormData) {

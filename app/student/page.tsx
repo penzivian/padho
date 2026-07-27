@@ -40,6 +40,7 @@ type TestRow = {
   title: string;
   scheduled_at: string;
   duration_minutes: number;
+  closed_at: string | null;
   batches: { name: string } | null;
 };
 
@@ -71,7 +72,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
     supabase.from("batch_students").select("batch_id,batches(name,subject,exam_target)"),
     supabase
       .from("tests")
-      .select("id,title,scheduled_at,duration_minutes,batches(name)")
+      .select("id,title,scheduled_at,duration_minutes,closed_at,batches(name)")
       .order("scheduled_at", { ascending: false }),
     supabase.from("test_submissions").select("test_id,status,submitted_at"),
     supabase
@@ -84,7 +85,16 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   const tests = (testData ?? []) as unknown as TestRow[];
   const submissions = (submissionData ?? []) as SubmissionRow[];
   const progress = (progressData ?? []) as unknown as ProgressRow[];
-  const submittedByTest = new Map(submissions.map((submission) => [submission.test_id, submission.status]));
+  // An unsubmitted row is an attempt in progress, not a finished one — it must not read as
+  // "pending", and it turns the CTA into Resume.
+  const submittedByTest = new Map(
+    submissions
+      .filter((submission) => submission.submitted_at)
+      .map((submission) => [submission.test_id, submission.status])
+  );
+  const inProgress = new Set(
+    submissions.filter((submission) => !submission.submitted_at).map((row) => row.test_id)
+  );
   const averageScore = progress.length
     ? Math.round(progress.reduce((sum, snapshot) => sum + snapshot.score_percent, 0) / progress.length)
     : null;
@@ -102,6 +112,7 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   // actually open — an upcoming test is listed but not yet a call to action.
   const isOpen = (test: TestRow) =>
     !submittedByTest.has(test.id) &&
+    !test.closed_at &&
     new Date(test.scheduled_at).getTime() <= now &&
     now <= endOf(test);
   const openTests = tests.filter(isOpen).length;
@@ -110,7 +121,12 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
   const nextTest = liveTest
     ? null
     : (tests
-        .filter((test) => !submittedByTest.has(test.id) && new Date(test.scheduled_at).getTime() > now)
+        .filter(
+          (test) =>
+            !submittedByTest.has(test.id) &&
+            !test.closed_at &&
+            new Date(test.scheduled_at).getTime() > now
+        )
         .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null);
   const trendValues = [...progress].reverse().map((snapshot) => snapshot.score_percent);
   // Practice events are fetched inside the streamed heatmap; test events come from
@@ -162,7 +178,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               />
             </CardHeader>
             <Button asChild className="h-12 w-full">
-              <Link href={`/student/tests/${liveTest.id}`}>Take the test →</Link>
+              <Link href={`/student/tests/${liveTest.id}`}>
+                {inProgress.has(liveTest.id) ? "Resume the test →" : "Take the test →"}
+              </Link>
             </Button>
           </Card>
         ) : nextTest ? (
@@ -300,7 +318,8 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
           {tests.slice(0, 4).map((test) => {
             const submitted = submittedByTest.get(test.id);
             const open = isOpen(test);
-            const upcoming = !submitted && new Date(test.scheduled_at).getTime() > now;
+            const upcoming =
+      !submitted && !test.closed_at && new Date(test.scheduled_at).getTime() > now;
             return (
               <Card key={test.id}>
                 <CardHeader>
@@ -316,7 +335,14 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                             : "rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                     }
                   >
-                    {submitted ?? (open ? "open" : upcoming ? "upcoming" : "missed")}
+                    {submitted ??
+                      (open
+                        ? "open"
+                        : upcoming
+                          ? "upcoming"
+                          : test.closed_at
+                            ? "closed"
+                            : "missed")}
                   </span>
                 </CardHeader>
                 <dl className="mb-4 grid gap-2 text-sm">
@@ -331,7 +357,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                 </dl>
                 {open ? (
                   <Button asChild variant={test.id === firstOpenTestId ? "default" : "outline"}>
-                    <Link href={`/student/tests/${test.id}`}>Take test</Link>
+                    <Link href={`/student/tests/${test.id}`}>
+                      {inProgress.has(test.id) ? "Resume test" : "Take test"}
+                    </Link>
                   </Button>
                 ) : upcoming ? (
                   <TestCountdown

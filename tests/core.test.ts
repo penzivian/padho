@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { extractJson } from "@/lib/ai";
+import { questionState, remainingMs, summarizeAttempt } from "@/lib/attempt";
 import {
   buildProgressSnapshot,
   findKeylessMcqs,
@@ -173,6 +174,51 @@ describe("grading", () => {
     assert.deepEqual(snapshot.topicBreakdown, {
       Civics: { earned: 2, possible: 4, percent: 50 }
     });
+  });
+});
+
+describe("cbt attempt state", () => {
+  const answer = (studentAnswer: string, markedForReview = false) => ({
+    questionId: "q",
+    studentAnswer,
+    markedForReview
+  });
+
+  it("maps each answer row to its NTA-equivalent palette state", () => {
+    // No row at all is the only thing that means "not visited" — visiting writes a blank row.
+    assert.equal(questionState(undefined), "not_visited");
+    assert.equal(questionState(answer("")), "visited");
+    assert.equal(questionState(answer("   ")), "visited");
+    assert.equal(questionState(answer("", true)), "marked");
+    assert.equal(questionState(answer("Option B")), "answered");
+    assert.equal(questionState(answer("Option B", true)), "answered_marked");
+  });
+
+  it("counts an answered-and-marked question as answered, matching NTA scoring", () => {
+    const summary = summarizeAttempt(["a", "b", "c", "d", "e"], new Map([
+      ["a", { questionId: "a", studentAnswer: "A", markedForReview: false }],
+      ["b", { questionId: "b", studentAnswer: "B", markedForReview: true }],
+      ["c", { questionId: "c", studentAnswer: "", markedForReview: true }],
+      ["d", { questionId: "d", studentAnswer: "", markedForReview: false }]
+      // "e" never visited
+    ]));
+
+    assert.deepEqual(summary, {
+      answered: 2,
+      notAnswered: 2,
+      markedForReview: 2,
+      notVisited: 1,
+      total: 5
+    });
+  });
+
+  it("floors the remaining time at zero once the window has passed", () => {
+    const start = "2026-08-05T10:00:00.000Z";
+    const atStart = Date.parse(start);
+    assert.equal(remainingMs(start, 60, atStart), 60 * 60_000);
+    assert.equal(remainingMs(start, 60, atStart + 59 * 60_000), 60_000);
+    assert.equal(remainingMs(start, 60, atStart + 60 * 60_000), 0);
+    assert.equal(remainingMs(start, 60, atStart + 99 * 60_000), 0);
   });
 });
 

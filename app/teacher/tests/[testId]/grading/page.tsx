@@ -26,7 +26,9 @@ type SubmissionRow = {
     awarded_marks: number | null;
     ai_feedback: string | null;
     teacher_feedback: string | null;
+    question_id: string;
     questions: {
+      created_at: string;
       question_text: string;
       question_type: "mcq" | "subjective";
       max_marks: number;
@@ -57,12 +59,22 @@ export default async function GradingPage({ params }: GradingPageProps) {
   const { data } = await admin
     .from("test_submissions")
     .select(
-      "id,status,profiles(full_name,phone),answers(id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(question_text,question_type,max_marks,rubric,correct_answer))"
+      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(created_at,question_text,question_type,max_marks,rubric,correct_answer))"
     )
     .eq("test_id", params.testId)
+    .not("submitted_at", "is", null)
     .order("submitted_at", { ascending: false });
 
-  const submissions = (data ?? []) as unknown as SubmissionRow[];
+  // Questions in a bulk-inserted paper share one created_at, so ordering by it alone is
+  // non-deterministic. get_student_test_questions breaks the tie on id; match that exactly or
+  // the teacher's "Question 3" is not the question the student saw at position 3.
+  const submissions = ((data ?? []) as unknown as SubmissionRow[]).map((submission) => ({
+    ...submission,
+    answers: [...submission.answers].sort((a, b) => {
+      const byCreated = (a.questions?.created_at ?? "").localeCompare(b.questions?.created_at ?? "");
+      return byCreated !== 0 ? byCreated : a.question_id.localeCompare(b.question_id);
+    })
+  }));
   const gradedCount = submissions.filter((submission) => submission.status === "graded").length;
   const reviewCount = submissions.length - gradedCount;
 

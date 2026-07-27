@@ -13,12 +13,14 @@ type TestRow = {
   title: string;
   scheduled_at: string;
   duration_minutes: number;
+  closed_at: string | null;
   batches: { name: string } | null;
 };
 
 type SubmissionRow = {
   test_id: string;
   status: "pending" | "graded";
+  submitted_at: string | null;
 };
 
 export default async function StudentTestsPage() {
@@ -27,14 +29,21 @@ export default async function StudentTestsPage() {
   const [{ data: testData }, { data: submissionData }] = await Promise.all([
     supabase
       .from("tests")
-      .select("id,title,scheduled_at,duration_minutes,batches(name)")
+      .select("id,title,scheduled_at,duration_minutes,closed_at,batches(name)")
       .order("scheduled_at", { ascending: false }),
-    supabase.from("test_submissions").select("test_id,status")
+    supabase.from("test_submissions").select("test_id,status,submitted_at")
   ]);
 
   const tests = (testData ?? []) as unknown as TestRow[];
   const submissions = (submissionData ?? []) as SubmissionRow[];
-  const statusByTest = new Map(submissions.map((row) => [row.test_id, row.status]));
+  // An unsubmitted row is an attempt in progress, not a finished one — it must not count as
+  // "done", and it turns the CTA into Resume.
+  const statusByTest = new Map(
+    submissions.filter((row) => row.submitted_at).map((row) => [row.test_id, row.status])
+  );
+  const inProgress = new Set(
+    submissions.filter((row) => !row.submitted_at).map((row) => row.test_id)
+  );
   const now = Date.now();
 
   const endOf = (test: TestRow) =>
@@ -42,13 +51,21 @@ export default async function StudentTestsPage() {
   const live = tests.filter(
     (test) =>
       !statusByTest.has(test.id) &&
+      !test.closed_at &&
       new Date(test.scheduled_at).getTime() <= now &&
       now <= endOf(test)
   );
   const upcoming = tests
-    .filter((test) => !statusByTest.has(test.id) && new Date(test.scheduled_at).getTime() > now)
+    .filter(
+      (test) =>
+        !statusByTest.has(test.id) &&
+        !test.closed_at &&
+        new Date(test.scheduled_at).getTime() > now
+    )
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-  const done = tests.filter((test) => statusByTest.has(test.id) || now > endOf(test));
+  const done = tests.filter(
+    (test) => statusByTest.has(test.id) || test.closed_at || now > endOf(test)
+  );
 
   return (
     <main className="page-shell max-w-3xl">
@@ -73,7 +90,9 @@ export default async function StudentTestsPage() {
             </CardHeader>
             <TestMeta test={test} />
             <Button asChild className="mt-3" variant={index === 0 ? "default" : "outline"}>
-              <Link href={`/student/tests/${test.id}`}>Take test</Link>
+              <Link href={`/student/tests/${test.id}`}>
+                {inProgress.has(test.id) ? "Resume test" : "Take test"}
+              </Link>
             </Button>
           </Card>
         ))}
@@ -107,7 +126,7 @@ export default async function StudentTestsPage() {
                         : "rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                   }
                 >
-                  {status ?? "missed"}
+                  {status ?? (test.closed_at ? "closed" : "missed")}
                 </span>
               </CardHeader>
               <TestMeta test={test} />

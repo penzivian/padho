@@ -1,40 +1,31 @@
-import { Clock3 } from "lucide-react";
+import { Clock3, ListChecks } from "lucide-react";
+import Link from "next/link";
 
-import { submitTestAction } from "@/app/actions";
-import { SubmitButton } from "@/components/submit-button";
+import { startTestAction } from "@/app/actions";
+import { DeclarationGate } from "@/components/student/declaration-gate";
 import { TestCountdown } from "@/components/test-countdown";
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { FormField } from "@/components/ui/form-field";
-import { Textarea } from "@/components/ui/textarea";
 import { requireProfile } from "@/lib/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
-import type { Json, QuestionType } from "@/types/database";
 
 type TestPageProps = {
   params: { testId: string };
+  searchParams?: { error?: string };
 };
 
-type SafeQuestion = {
-  id: string;
-  question_text: string;
-  question_type: QuestionType;
-  topic: string;
-  options: Json | null;
-  max_marks: number;
-};
-
-export default async function StudentTestPage({ params }: TestPageProps) {
-  await requireProfile("student");
+export default async function TestInstructionsPage({ params, searchParams }: TestPageProps) {
+  const { user } = await requireProfile("student");
   const supabase = createSupabaseServerClient();
-  const [{ data: test }, { data: questions }] = await Promise.all([
-    supabase
-      .from("tests")
-      .select("id,title,scheduled_at,duration_minutes")
-      .eq("id", params.testId)
-      .maybeSingle(),
-    supabase.rpc("get_student_test_questions", { p_test_id: params.testId })
-  ]);
+
+  // Visibility gate on the RLS-respecting client first; only then read aggregates with admin.
+  const { data: test } = await supabase
+    .from("tests")
+    .select("id,title,scheduled_at,duration_minutes,closed_at,batches(name)")
+    .eq("id", params.testId)
+    .maybeSingle();
 
   if (!test) {
     return (
@@ -44,98 +35,183 @@ export default async function StudentTestPage({ params }: TestPageProps) {
     );
   }
 
-  const safeQuestions = (questions ?? []) as SafeQuestion[];
-  const startsAtMs = new Date(test.scheduled_at).getTime();
-  const endsAt = new Date(startsAtMs + test.duration_minutes * 60_000).toISOString();
+  const admin = createSupabaseAdminClient();
+  // Counts and marks only — never question text, options, keys or rubrics. Those are served
+  // exclusively by get_student_test_questions, which checks the test is open.
+  const [{ data: paper }, { data: submission }] = await Promise.all([
+    admin
+      .from("tests")
+      .select("question_paper_id,questions:question_papers(questions(question_type,max_marks))")
+      .eq("id", params.testId)
+      .single(),
+    supabase
+      .from("test_submissions")
+      .select("id,submitted_at")
+      .eq("test_id", params.testId)
+      .eq("student_id", user.id)
+      .maybeSingle()
+  ]);
 
-  // The test row is visible from the moment it is scheduled, but questions are released
-  // only once it opens — so a student arriving early gets a waiting room, not a blank form.
-  if (Date.now() < startsAtMs) {
-    return (
-      <main className="page-shell max-w-3xl">
-        <div>
-          <h1 className="text-2xl font-semibold">{test.title}</h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock3 className="h-4 w-4" aria-hidden="true" />
-            {formatDateTime(test.scheduled_at)} · {test.duration_minutes} min
-          </p>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Not started yet</CardTitle>
+  const questions =
+    (paper?.questions as unknown as { questions: { question_type: string; max_marks: number }[] } | null)
+      ?.questions ?? [];
+  const mcqCount = questions.filter((question) => question.question_type === "mcq").length;
+  const subjectiveCount = questions.length - mcqCount;
+  const totalMarks = questions.reduce((sum, question) => sum + Number(question.max_marks), 0);
+
+  // Supabase types the embedded relation as an array; it is one row here.
+  const batch = Array.isArray(test.batches) ? test.batches[0] : test.batches;
+  const batchName = (batch as { name: string } | null | undefined)?.name;
+
+  const startsAtMs = new Date(test.scheduled_at).getTime();
+  const endsAtMs = startsAtMs + test.duration_minutes * 60_000;
+  const now = Date.now();
+  const isClosed = Boolean(test.closed_at);
+  const hasStarted = now >= startsAtMs;
+  const hasEnded = now > endsAtMs;
+  const isOpen = !isClosed && hasStarted && !hasEnded;
+  const alreadySubmitted = Boolean(submission?.submitted_at);
+  const isResuming = Boolean(submission && !submission.submitted_at);
+
+  return (
+    <main className="page-shell max-w-3xl">
+      <div>
+        <h1 className="text-2xl font-semibold">{test.title}</h1>
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Clock3 className="h-4 w-4" aria-hidden="true" />
+          {formatDateTime(test.scheduled_at)} · {test.duration_minutes} min ·{" "}
+          {batchName ?? "Your batch"}
+        </p>
+      </div>
+
+      {searchParams?.error ? (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {searchParams.error}
+        </p>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ListChecks className="h-5 w-5 text-primary" aria-hidden="true" />
+            Paper at a glance
+          </CardTitle>
+          {!isClosed && !hasStarted ? (
             <TestCountdown
               endsAt={test.scheduled_at}
               prefix="starts in "
               expiredText="starting now"
             />
+          ) : null}
+        </CardHeader>
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <Row label="Questions" value={String(questions.length)} />
+          <Row label="Total marks" value={String(totalMarks)} />
+          <Row label="Objective (MCQ)" value={String(mcqCount)} />
+          <Row label="Descriptive" value={String(subjectiveCount)} />
+          <Row label="Duration" value={`${test.duration_minutes} minutes`} />
+          <Row label="Starts" value={formatDateTime(test.scheduled_at)} />
+        </dl>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>General instructions</CardTitle>
+        </CardHeader>
+        <ol className="grid list-decimal gap-2 pl-5 text-sm text-muted-foreground">
+          <li>
+            The countdown at the top right shows the time remaining. The test submits itself
+            automatically when the clock reaches zero.
+          </li>
+          <li>
+            One question shows at a time. Use <strong>Save &amp; Next</strong> to record your
+            answer and move on, or click any number in the question palette to jump straight to
+            that question.
+          </li>
+          <li>
+            The palette colours every question by its status:{" "}
+            <strong>answered</strong>, <strong>not answered</strong>,{" "}
+            <strong>marked for review</strong>, or <strong>not visited</strong>. A legend sits
+            below the palette.
+          </li>
+          <li>
+            <strong>Mark for review</strong> flags a question to come back to. A question that
+            is answered <em>and</em> marked for review is still counted — the flag is only a
+            reminder for you.
+          </li>
+          <li>
+            <strong>Clear response</strong> removes your answer for the current question.
+          </li>
+          <li>
+            Every answer is saved to the server as you go, so refreshing the page, losing your
+            connection or switching device will not lose your work. Sign in again and resume.
+          </li>
+          <li>
+            You may change any answer as often as you like until you submit or the time ends.
+          </li>
+          {subjectiveCount > 0 ? (
+            <li>
+              Descriptive answers are reviewed by your teacher, so they will not appear in your
+              result until they are graded.
+            </li>
+          ) : null}
+        </ol>
+      </Card>
+
+      {alreadySubmitted ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Already submitted</CardTitle>
           </CardHeader>
           <p className="text-sm text-muted-foreground">
-            Questions unlock when the test begins. Come back at the scheduled time.
+            You have submitted this test. Your result appears on your dashboard once it is graded.
           </p>
+          <Button asChild className="mt-3" variant="outline">
+            <Link href="/student">Back to dashboard</Link>
+          </Button>
         </Card>
-      </main>
-    );
-  }
-
-  return (
-    <main className="page-shell max-w-3xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{test.title}</h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock3 className="h-4 w-4" aria-hidden="true" />
-            {formatDateTime(test.scheduled_at)} · {test.duration_minutes} min ·{" "}
-            {safeQuestions.length} questions
+      ) : isClosed ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Closed by your teacher</CardTitle>
+          </CardHeader>
+          <p className="text-sm text-muted-foreground">
+            This test is no longer accepting answers.
           </p>
-        </div>
-        <TestCountdown endsAt={endsAt} />
-      </div>
-
-      <form action={submitTestAction} className="grid gap-4">
-        <input type="hidden" name="test_id" value={test.id} />
-        {safeQuestions.map((question, index) => (
-          <Card key={question.id}>
-            <CardHeader>
-              <CardTitle className="text-base">Question {index + 1}</CardTitle>
-              <span className="rounded-md bg-muted px-2 py-1 text-xs">{question.max_marks} marks</span>
-            </CardHeader>
-            <div className="grid gap-3">
-              <p>{question.question_text}</p>
-              {question.question_type === "mcq" ? (
-                <div className="grid gap-2">
-                  {jsonStringArray(question.options).map((option, optionIndex) => (
-                    <label
-                      key={option}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-secondary/50"
-                    >
-                      <input
-                        className="peer sr-only"
-                        name={`answer_${question.id}`}
-                        type="radio"
-                        value={option}
-                        required
-                      />
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-sm font-semibold peer-checked:bg-primary peer-checked:text-primary-foreground">
-                        {String.fromCharCode(65 + optionIndex)}
-                      </span>
-                      {option}
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <FormField htmlFor={`answer_${question.id}`} label="Your answer">
-                  <Textarea id={`answer_${question.id}`} name={`answer_${question.id}`} required />
-                </FormField>
-              )}
-            </div>
-          </Card>
-        ))}
-        <SubmitButton pendingText="Submitting">Submit test</SubmitButton>
-      </form>
+          <Button asChild className="mt-3" variant="outline">
+            <Link href="/student/tests">Back to tests</Link>
+          </Button>
+        </Card>
+      ) : hasEnded ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Time is up</CardTitle>
+          </CardHeader>
+          <p className="text-sm text-muted-foreground">
+            The window for this test has closed.
+          </p>
+          <Button asChild className="mt-3" variant="outline">
+            <Link href="/student/tests">Back to tests</Link>
+          </Button>
+        </Card>
+      ) : (
+        <DeclarationGate
+          action={startTestAction}
+          testId={test.id}
+          isOpen={isOpen}
+          isResuming={isResuming}
+          scheduledAt={test.scheduled_at}
+        />
+      )}
     </main>
   );
 }
 
-function jsonStringArray(value: Json | null) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
+  );
 }

@@ -37,6 +37,28 @@ function zoneOffsetMinutes(instant: Date) {
   return (wallClock - instant.getTime()) / 60_000;
 }
 
+// Inverse of scheduleInputToUtcIso: renders a stored instant as the IST wall clock that a
+// <input type="datetime-local"> expects, so the reschedule form prefills with the time the
+// teacher originally set rather than a UTC one.
+export function utcIsoToScheduleInput(iso: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  })
+    .formatToParts(new Date(iso))
+    .reduce<Record<string, string>>((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
 // A <input type="datetime-local"> value ("2026-07-28T00:30") carries no timezone, so
 // `new Date(value)` resolves it in the *process's* zone. Resolve it in APP_TIME_ZONE.
 // Returns null on a malformed value so callers can reject rather than store a bad instant.

@@ -12,7 +12,11 @@ export const getTeacherNavCounts = cache(async (teacherId: string) => {
   monthStart.setHours(0, 0, 0, 0);
 
   const [{ count: toGrade }, { count: aiUsed }] = await Promise.all([
-    supabase.from("test_submissions").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase
+      .from("test_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .not("submitted_at", "is", null),
     supabase
       .from("ai_usage_events")
       .select("id", { count: "exact", head: true })

@@ -43,8 +43,15 @@ export default async function TeacherHomePage() {
     supabase.from("question_papers").select("id", { count: "exact", head: true }),
     supabase.from("tests").select("id", { count: "exact", head: true }),
     supabase.from("batch_students").select("student_id", { count: "exact", head: true }),
-    supabase.from("test_submissions").select("id", { count: "exact", head: true }),
-    supabase.from("test_submissions").select("id", { count: "exact", head: true }).eq("status", "graded"),
+    supabase
+      .from("test_submissions")
+      .select("id", { count: "exact", head: true })
+      .not("submitted_at", "is", null),
+    supabase
+      .from("test_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "graded")
+      .not("submitted_at", "is", null),
     supabase
       .from("practice_attempts")
       .select("id", { count: "exact", head: true })
@@ -53,7 +60,11 @@ export default async function TeacherHomePage() {
       .from("progress_snapshots")
       .select("student_id,batch_id,score_percent,created_at,topic_breakdown")
       .order("created_at", { ascending: true }),
-    supabase.from("test_submissions").select("id,tests(id,title)").eq("status", "pending"),
+    supabase
+      .from("test_submissions")
+      .select("id,tests(id,title)")
+      .eq("status", "pending")
+      .not("submitted_at", "is", null),
     supabase.from("question_papers").select("id,title,questions(question_type,correct_answer)"),
     supabase
       .from("tests")

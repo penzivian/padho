@@ -131,6 +131,7 @@ export type Database = {
           scheduled_at: string;
           duration_minutes: number;
           status: TestStatus;
+          closed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -141,6 +142,7 @@ export type Database = {
           scheduled_at: string;
           duration_minutes: number;
           status?: TestStatus;
+          closed_at?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["tests"]["Insert"]>;
@@ -170,6 +172,7 @@ export type Database = {
           submission_id: string;
           question_id: string;
           student_answer: string;
+          marked_for_review: boolean;
           ai_suggested_marks: number | null;
           awarded_marks: number | null;
           ai_feedback: string | null;
@@ -181,6 +184,7 @@ export type Database = {
           submission_id: string;
           question_id: string;
           student_answer?: string;
+          marked_for_review?: boolean;
           ai_suggested_marks?: number | null;
           awarded_marks?: number | null;
           ai_feedback?: string | null;
