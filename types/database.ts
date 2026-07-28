@@ -105,6 +105,7 @@ export type Database = {
           correct_answer: string | null;
           max_marks: number;
           rubric: string | null;
+          position: number;
           created_at: string;
         };
         Insert: {
@@ -117,6 +118,7 @@ export type Database = {
           correct_answer?: string | null;
           max_marks?: number;
           rubric?: string | null;
+          position?: number;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["questions"]["Insert"]>;

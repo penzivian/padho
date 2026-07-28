@@ -12,6 +12,7 @@ import {
   type DraftQuestion
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
+import { parseAnswerKey } from "@/lib/extract";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
 import { scheduleInputToUtcIso } from "@/lib/time";
 import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
@@ -348,8 +349,11 @@ export async function savePaperAction(payload: {
 
   if (paperError) return { ok: false, message: paperError.message };
 
-  const rows: Insert<"questions">[] = questions.map((question) => ({
+  // position preserves the paper's order explicitly. A bulk insert gives every row the same
+  // created_at, so without this the order falls through to a random UUID.
+  const rows: Insert<"questions">[] = questions.map((question, index) => ({
     question_paper_id: paper.id,
+    position: index + 1,
     question_text: question.question_text,
     question_type: question.question_type,
     topic: question.topic,
@@ -533,7 +537,7 @@ async function finalizeAttempt(submissionId: string, questionPaperId: string) {
       .from("questions")
       .select("id,question_type,correct_answer,max_marks")
       .eq("question_paper_id", questionPaperId)
-      .order("created_at", { ascending: true }),
+      .order("position", { ascending: true }),
     admin.from("answers").select("question_id,student_answer").eq("submission_id", submissionId)
   ]);
 
@@ -611,6 +615,135 @@ export async function submitTestAction(formData: FormData) {
 
   revalidatePath("/student");
   redirect(`/student?submitted=${testId}`);
+}
+
+// Adds or corrects an answer key on a paper that was already saved (and possibly already
+// tested on). Keys are given by question number — the paper's `position`, which is the same
+// numbering the student saw — so "12:B" always means the twelfth question.
+export async function updateAnswerKeyAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const admin = createSupabaseAdminClient();
+  const paperId = readString(formData, "paper_id");
+  const keyText = readString(formData, "answer_key");
+
+  const { data: paper } = await supabase
+    .from("question_papers")
+    .select("id")
+    .eq("id", paperId)
+    .maybeSingle();
+
+  if (!paper) redirect("/teacher/papers?error=Paper%20not%20available");
+
+  const key = parseAnswerKey(keyText);
+  if (Object.keys(key).length === 0) {
+    redirect("/teacher/papers?error=No%20answers%20found.%20Use%20a%20format%20like%201%3AB%2C%202%3AC");
+  }
+
+  const { data: questions } = await admin
+    .from("questions")
+    .select("id,question_type,options,position,max_marks")
+    .eq("question_paper_id", paperId)
+    .order("position", { ascending: true });
+
+  if (!questions) redirect("/teacher/papers?error=Questions%20unavailable");
+
+  let applied = 0;
+  for (const question of questions) {
+    const letter = key[question.position];
+    if (!letter || question.question_type !== "mcq") continue;
+
+    const options = Array.isArray(question.options)
+      ? question.options.filter((option): option is string => typeof option === "string")
+      : [];
+    const optionIndex = letter.charCodeAt(0) - 65;
+    if (optionIndex < 0 || optionIndex >= options.length) continue;
+
+    const { error } = await admin
+      .from("questions")
+      .update({ correct_answer: options[optionIndex] })
+      .eq("id", question.id);
+
+    if (error) redirect(`/teacher/papers?error=${encodeURIComponent(error.message)}`);
+    applied += 1;
+  }
+
+  try {
+    await rescoreUnapprovedMcqs(paperId);
+  } catch (rescoreError) {
+    redirect(`/teacher/papers?error=${encodeURIComponent(errorMessage(rescoreError))}`);
+  }
+
+  revalidatePath("/teacher/papers");
+  redirect(`/teacher/papers?applied=${applied}`);
+}
+
+// After a key changes, re-score MCQ answers the teacher has not already approved by hand.
+// An approved answer is deliberately left alone — a teacher's manual mark outranks the key,
+// and silently overwriting it would break the "teacher decides" guarantee.
+async function rescoreUnapprovedMcqs(paperId: string) {
+  const admin = createSupabaseAdminClient();
+
+  const { data: tests } = await admin
+    .from("tests")
+    .select("id")
+    .eq("question_paper_id", paperId);
+
+  if (!tests?.length) return;
+
+  const { data: submissions } = await admin
+    .from("test_submissions")
+    .select("id,status")
+    .in(
+      "test_id",
+      tests.map((test) => test.id)
+    )
+    .not("submitted_at", "is", null);
+
+  if (!submissions?.length) return;
+
+  const { data: questions } = await admin
+    .from("questions")
+    .select("id,question_type,correct_answer,max_marks")
+    .eq("question_paper_id", paperId);
+
+  const keyedMcqs = new Map(
+    (questions ?? [])
+      .filter((question) => question.question_type === "mcq" && question.correct_answer?.trim())
+      .map((question) => [question.id, question])
+  );
+
+  if (keyedMcqs.size === 0) return;
+
+  for (const submission of submissions) {
+    const { data: answers } = await admin
+      .from("answers")
+      .select("id,question_id,student_answer,approved_at")
+      .eq("submission_id", submission.id)
+      .is("approved_at", null);
+
+    let changed = false;
+    for (const answer of answers ?? []) {
+      const question = keyedMcqs.get(answer.question_id);
+      if (!question) continue;
+
+      await admin
+        .from("answers")
+        .update({
+          awarded_marks: scoreMcqAnswer(
+            answer.student_answer,
+            question.correct_answer,
+            question.max_marks
+          )
+        })
+        .eq("id", answer.id);
+      changed = true;
+    }
+
+    // Only an already-graded submission has a snapshot to keep in step; a pending one gets
+    // its snapshot when the teacher approves.
+    if (changed && submission.status === "graded") await createProgressSnapshot(submission.id);
+  }
 }
 
 export async function rescheduleTestAction(formData: FormData) {

@@ -1,4 +1,4 @@
-import { MessageCircle } from "lucide-react";
+import { ListChecks, MessageCircle } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
@@ -63,7 +63,8 @@ export default async function TestResultsPage({ params, searchParams }: ResultsP
     supabase
       .from("test_submissions")
       .select("id,status,student_id,profiles(full_name,phone),answers(awarded_marks,questions(max_marks))")
-      .eq("test_id", params.testId),
+      .eq("test_id", params.testId)
+      .not("submitted_at", "is", null),
     supabase.from("progress_snapshots").select("student_id,topic_breakdown").eq("test_id", params.testId)
   ]);
 
@@ -183,6 +184,7 @@ export default async function TestResultsPage({ params, searchParams }: ResultsP
                   <th className="py-2 pr-2 font-medium">Score</th>
                   <th className="py-2 pr-2 font-medium">%</th>
                   <th className="py-2 pr-2 font-medium">Strongest topic</th>
+                  <th className="py-2 pr-2 font-medium">Responses</th>
                   <th className="py-2 text-right font-medium">Send</th>
                 </tr>
               </thead>
@@ -207,6 +209,16 @@ export default async function TestResultsPage({ params, searchParams }: ResultsP
                       <td className="py-2.5 pr-2 font-serif font-semibold">{row.percentage}%</td>
                       <td className="py-2.5 pr-2 text-muted-foreground">
                         {bestTopicByStudent.get(row.studentId) ?? "—"}
+                      </td>
+                      <td className="py-2.5 pr-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link
+                            href={`/teacher/tests/${params.testId}/responses/${row.studentId}`}
+                          >
+                            <ListChecks className="h-4 w-4" aria-hidden="true" />
+                            View
+                          </Link>
+                        </Button>
                       </td>
                       <td className="py-2.5 text-right">
                         {phone ? (
@@ -238,9 +250,21 @@ export default async function TestResultsPage({ params, searchParams }: ResultsP
         )}
 
         {pending.length > 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Awaiting grading: {pending.map((row) => row.name).join(", ")}
-          </p>
+          <div className="mt-4 border-t pt-3">
+            <p className="text-sm text-muted-foreground">Awaiting grading</p>
+            {/* Ungraded students are not in the rank table, so their responses are only
+                reachable from here — the teacher still needs to read what they wrote. */}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {pending.map((row) => (
+                <Button key={row.studentId} asChild size="sm" variant="outline">
+                  <Link href={`/teacher/tests/${params.testId}/responses/${row.studentId}`}>
+                    <ListChecks className="h-4 w-4" aria-hidden="true" />
+                    {row.name}
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          </div>
         ) : null}
       </Card>
     </main>

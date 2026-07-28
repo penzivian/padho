@@ -194,6 +194,9 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               </div>
               <TestCountdown endsAt={nextTest.scheduled_at} prefix="starts in " expiredText="live now" />
             </CardHeader>
+            <Button asChild className="mb-3" variant="outline">
+              <Link href={`/student/tests/${nextTest.id}`}>Read instructions →</Link>
+            </Button>
             <p className="text-sm text-muted-foreground">
               {formatDateTime(nextTest.scheduled_at)} · until then, keep the streak going.
             </p>
@@ -362,11 +365,16 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
                     </Link>
                   </Button>
                 ) : upcoming ? (
-                  <TestCountdown
-                    endsAt={test.scheduled_at}
-                    prefix="starts in "
-                    expiredText="live now"
-                  />
+                  <div className="grid gap-2">
+                    <TestCountdown
+                      endsAt={test.scheduled_at}
+                      prefix="starts in "
+                      expiredText="live now"
+                    />
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/student/tests/${test.id}`}>View instructions</Link>
+                    </Button>
+                  </div>
                 ) : null}
               </Card>
             );

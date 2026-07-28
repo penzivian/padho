@@ -65,7 +65,8 @@ export default async function StudentResultPage({ params }: StudentResultPagePro
     admin
       .from("test_submissions")
       .select("status,student_id,profiles(full_name),answers(awarded_marks,questions(max_marks))")
-      .eq("test_id", params.testId),
+      .eq("test_id", params.testId)
+      .not("submitted_at", "is", null),
     supabase
       .from("progress_snapshots")
       .select("test_id,score_percent,created_at")

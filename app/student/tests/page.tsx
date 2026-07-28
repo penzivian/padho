@@ -106,6 +106,9 @@ export default async function StudentTestsPage() {
               <TestCountdown endsAt={test.scheduled_at} prefix="starts in " expiredText="live now" />
             </CardHeader>
             <TestMeta test={test} />
+            <Button asChild className="mt-3" size="sm" variant="outline">
+              <Link href={`/student/tests/${test.id}`}>View instructions</Link>
+            </Button>
           </Card>
         ))}
       </Section>

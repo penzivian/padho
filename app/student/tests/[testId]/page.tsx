@@ -198,9 +198,9 @@ export default async function TestInstructionsPage({ params, searchParams }: Tes
         <DeclarationGate
           action={startTestAction}
           testId={test.id}
-          isOpen={isOpen}
-          isResuming={isResuming}
           scheduledAt={test.scheduled_at}
+          endsAt={new Date(endsAtMs).toISOString()}
+          isResuming={isResuming}
         />
       )}
     </main>

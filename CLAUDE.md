@@ -2,7 +2,22 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (NTA-style CBT test interface with resumable attempts; teacher close/reschedule — see [Recent changes](#recent-changes-2026-07-28-cbt-test-interface)).
+**Last updated: 2026-07-28** (question order fixed and made explicit; answer keys editable after saving; 15-minute entry window; teacher can read any student's responses — see [Recent changes](#recent-changes-2026-07-28-question-order--paper-fixes)).
+
+## Recent changes (2026-07-28 question order + paper fixes)
+
+**Questions were coming out of a paper in a scrambled order.** `savePaperAction` inserts a whole paper in ONE statement, so every row gets an identical `created_at`; ordering by `created_at, id` therefore fell through to the **id — a random UUID**. On the owner's real 45-question paper, question 1 was being served as question 23.
+
+- **Scoring was never affected.** Answers are stored and scored by `question_id`, and each is compared against *its own* `correct_answer` — never by position. Nothing needed re-grading; this was purely presentational. (Verified in-database before changing anything.)
+- Migration `0007_question_position.sql` (**applied live**) adds `questions.position`, backfills it from `ctid` (these rows are append-only, so physical order is still the insert order), and both student RPCs now `order by q.position, q.created_at, q.id`. `savePaperAction` sets `position` from the array index; the grading page and the new responses page sort by it too. **Anything that lists a paper's questions must order by `position`.**
+- **Deliberately no shuffling.** There is none anywhere in the codebase, and per-student randomised order is a *later* feature — if it is ever added it must not change `position`, since that is what the teacher's numbering and the pasted answer key both mean.
+- **Answer keys can be added or corrected after a paper is saved** (`updateAnswerKeyAction`, paste box on `/teacher/papers`). Keys are numbered by `position` — the same numbering the student saw. Applying a key **re-scores already-submitted attempts**, except answers with `approved_at` set: a teacher's manual mark outranks the key, and snapshots are refreshed only for submissions already `graded`.
+- **15-minute entry window.** `DeclarationGate` is a live client clock now: it ticks every second and **enables the Begin button at the exact start time with no reload** (the page is server-rendered once, so a student sitting on it would otherwise stay locked out). Inside `ENTRY_WINDOW_MS` (15 min) it reads as a waiting room. Upcoming tests finally have a **"View instructions" link** on `/student/tests` and the dashboard — previously an upcoming test had a countdown but no way in, which is what made the instructions page feel unreachable.
+- **Teacher can read any student's responses** — `/teacher/tests/[testId]/responses/[studentId]`, linked from the results table *and* from the "Awaiting grading" list (ungraded students are not in the rank table, so that was the only way to reach them). Shows every question in paper order with the chosen option, the key, per-question marks, mark-for-review flags and teacher feedback.
+- **Both results pages now filter `submitted_at is not null`** — an attempt in progress was leaking into the rank list.
+- Tests 58 → 61; lint and build clean. Verified end-to-end against the live DB, then all verification data removed.
+
+## Recent changes (2026-07-28 CBT test interface)
 
 ## Recent changes (2026-07-28 CBT test interface)
 

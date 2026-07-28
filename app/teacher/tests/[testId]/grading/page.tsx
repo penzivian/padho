@@ -28,7 +28,7 @@ type SubmissionRow = {
     teacher_feedback: string | null;
     question_id: string;
     questions: {
-      created_at: string;
+      position: number;
       question_text: string;
       question_type: "mcq" | "subjective";
       max_marks: number;
@@ -59,21 +59,19 @@ export default async function GradingPage({ params }: GradingPageProps) {
   const { data } = await admin
     .from("test_submissions")
     .select(
-      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(created_at,question_text,question_type,max_marks,rubric,correct_answer))"
+      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(position,question_text,question_type,max_marks,rubric,correct_answer))"
     )
     .eq("test_id", params.testId)
     .not("submitted_at", "is", null)
     .order("submitted_at", { ascending: false });
 
-  // Questions in a bulk-inserted paper share one created_at, so ordering by it alone is
-  // non-deterministic. get_student_test_questions breaks the tie on id; match that exactly or
-  // the teacher's "Question 3" is not the question the student saw at position 3.
+  // Sort by the paper's own order so the teacher's "Question 3" is the question the student
+  // saw at position 3 — get_student_test_questions orders the same way.
   const submissions = ((data ?? []) as unknown as SubmissionRow[]).map((submission) => ({
     ...submission,
-    answers: [...submission.answers].sort((a, b) => {
-      const byCreated = (a.questions?.created_at ?? "").localeCompare(b.questions?.created_at ?? "");
-      return byCreated !== 0 ? byCreated : a.question_id.localeCompare(b.question_id);
-    })
+    answers: [...submission.answers].sort(
+      (a, b) => (a.questions?.position ?? 0) - (b.questions?.position ?? 0)
+    )
   }));
   const gradedCount = submissions.filter((submission) => submission.status === "graded").length;
   const reviewCount = submissions.length - gradedCount;

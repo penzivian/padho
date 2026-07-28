@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { extractJson } from "@/lib/ai";
 import { questionState, remainingMs, summarizeAttempt } from "@/lib/attempt";
+import { parseAnswerKey } from "@/lib/extract";
 import {
   buildProgressSnapshot,
   findKeylessMcqs,
@@ -174,6 +175,25 @@ describe("grading", () => {
     assert.deepEqual(snapshot.topicBreakdown, {
       Civics: { earned: 2, possible: 4, percent: 50 }
     });
+  });
+});
+
+describe("answer key applied later", () => {
+  it("maps key letters onto options by question number", () => {
+    // The paste box is numbered by the paper's own order, which is what a teacher reads off
+    // their printed key — "2:C" must land on the second question's third option.
+    const key = parseAnswerKey("1:B, 2:C, 3:A");
+    assert.deepEqual(key, { 1: "B", 2: "C", 3: "A" });
+  });
+
+  it("accepts the loose formats teachers actually paste", () => {
+    assert.deepEqual(parseAnswerKey("1. B  2) C  3 - A"), { 1: "B", 2: "C", 3: "A" });
+    assert.deepEqual(parseAnswerKey("1 (b)\n2 (c)"), { 1: "B", 2: "C" });
+  });
+
+  it("returns nothing for text with no usable pairs, so the action can reject it", () => {
+    assert.deepEqual(parseAnswerKey(""), {});
+    assert.deepEqual(parseAnswerKey("please find the key attached"), {});
   });
 });
 

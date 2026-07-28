@@ -1,38 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SubmitButton } from "@/components/submit-button";
-import { TestCountdown } from "@/components/test-countdown";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+
+// Real exam halls let candidates in early to read the instructions, then unlock the paper on
+// the hour. ENTRY_WINDOW_MS is the "doors open" period before the scheduled start.
+export const ENTRY_WINDOW_MS = 15 * 60_000;
 
 type DeclarationGateProps = {
   action: (formData: FormData) => void | Promise<void>;
   testId: string;
-  isOpen: boolean;
-  isResuming: boolean;
   scheduledAt: string;
+  endsAt: string;
+  isResuming: boolean;
 };
 
-// The NTA-style declaration: the candidate confirms they have read the instructions before
-// the paper unlocks. Before the window opens the button stays disabled and a countdown runs,
-// so a student can read everything in advance instead of staring at a blank waiting screen.
 export function DeclarationGate({
   action,
   testId,
-  isOpen,
-  isResuming,
-  scheduledAt
+  scheduledAt,
+  endsAt,
+  isResuming
 }: DeclarationGateProps) {
   const [accepted, setAccepted] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // The server renders this once, so without a ticking clock a student sitting on the page
+  // would still see a disabled button after the start time passed. This flips it on the
+  // second, with no reload — submitTestAction/startTestAction re-check server-side anyway.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const startsAtMs = new Date(scheduledAt).getTime();
+  const endsAtMs = new Date(endsAt).getTime();
+  const isOpen = now >= startsAtMs && now <= endsAtMs;
+  const msToStart = startsAtMs - now;
+  const entryOpen = msToStart <= ENTRY_WINDOW_MS;
 
   return (
     <Card className="border-primary/40">
       <CardHeader>
         <CardTitle>{isResuming ? "Resume your attempt" : "Declaration"}</CardTitle>
-        {!isOpen ? (
-          <TestCountdown endsAt={scheduledAt} prefix="starts in " expiredText="starting now" />
-        ) : null}
+        {!isOpen ? <span className="font-mono text-sm">{formatCountdown(msToStart)}</span> : null}
       </CardHeader>
 
       <form action={action} className="grid gap-4">
@@ -53,8 +66,9 @@ export function DeclarationGate({
 
         {!isOpen ? (
           <p className="script-note">
-            The paper unlocks at the scheduled time. Keep this page open — you can begin the
-            moment the countdown ends.
+            {entryOpen
+              ? "You are in the waiting room. The paper unlocks automatically at the start time — stay on this page."
+              : "Tick the declaration whenever you like. The waiting room opens 15 minutes before the start time, and the paper unlocks at the start time itself."}
           </p>
         ) : null}
 
@@ -64,4 +78,16 @@ export function DeclarationGate({
       </form>
     </Card>
   );
+}
+
+function formatCountdown(ms: number) {
+  if (ms <= 0) return "starting now";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return hours > 0
+    ? `starts in ${hours}h ${pad(minutes)}m`
+    : `starts in ${pad(minutes)}:${pad(seconds)}`;
 }

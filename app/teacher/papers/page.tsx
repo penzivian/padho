@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { FilePlus2, X } from "lucide-react";
 
-import { publishPracticeAction, unpublishPracticeAction } from "@/app/actions";
+import { publishPracticeAction, unpublishPracticeAction, updateAnswerKeyAction } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { requireProfile } from "@/lib/auth";
 import { findKeylessMcqs } from "@/lib/grading";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -17,7 +18,12 @@ type PaperRow = {
   source: "uploaded" | "ai_generated";
   created_at: string;
   batches: { name: string } | null;
-  questions: { id: string; question_type: "mcq" | "subjective"; correct_answer: string | null }[];
+  questions: {
+    id: string;
+    question_type: "mcq" | "subjective";
+    correct_answer: string | null;
+    position: number;
+  }[];
 };
 
 type PracticeSetRow = {
@@ -28,7 +34,7 @@ type PracticeSetRow = {
 };
 
 type PapersPageProps = {
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; applied?: string };
 };
 
 export default async function TeacherPapersPage({ searchParams }: PapersPageProps) {
@@ -37,7 +43,7 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
   const [{ data }, { data: batchData }, { data: setData }] = await Promise.all([
     supabase
       .from("question_papers")
-      .select("id,title,source,created_at,batches(name),questions(id,question_type,correct_answer)")
+      .select("id,title,source,created_at,batches(name),questions(id,question_type,correct_answer,position)")
       .order("created_at", { ascending: false }),
     supabase.from("batches").select("id,name").order("created_at", { ascending: false }),
     supabase.from("practice_sets").select("id,paper_id,batch_id,batches(name)")
@@ -64,6 +70,14 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
       {searchParams?.error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {searchParams.error}
+        </p>
+      ) : null}
+
+      {searchParams?.applied ? (
+        <p className="rounded-md border border-primary/30 bg-secondary/50 p-3 text-sm">
+          Answer key applied to {searchParams.applied} question
+          {searchParams.applied === "1" ? "" : "s"}. Marks already approved by hand were left
+          untouched; everything else was re-scored.
         </p>
       ) : null}
 
@@ -106,6 +120,30 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
                 <dd>{formatDateTime(paper.created_at)}</dd>
               </div>
             </dl>
+
+            <details className="mt-4 rounded-lg border p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {keylessCount > 0 ? `Add answer key (${keylessCount} missing)` : "Edit answer key"}
+              </summary>
+              <form action={updateAnswerKeyAction} className="mt-3 grid gap-2">
+                <input type="hidden" name="paper_id" value={paper.id} />
+                <Textarea
+                  name="answer_key"
+                  rows={3}
+                  required
+                  placeholder="1:B, 2:C, 3:A …"
+                  aria-label="Answer key"
+                />
+                <p className="script-note">
+                  Numbered by the paper&apos;s own order — the same numbering your students see.
+                  Applying a key re-scores submitted attempts, except answers you already
+                  approved by hand.
+                </p>
+                <SubmitButton pendingText="Applying" variant="secondary">
+                  Apply answer key
+                </SubmitButton>
+              </form>
+            </details>
 
             <div className="mt-4 grid gap-2 border-t pt-3">
               {practiceSets
