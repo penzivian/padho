@@ -404,9 +404,14 @@ export default async function StudentHomePage({ searchParams }: StudentPageProps
               <TopicSegmentBar className="mt-2" value={snapshot.topic_breakdown} />
               <p className="mb-3 mt-2 text-sm text-muted-foreground">{snapshot.batches?.name ?? "-"}</p>
               <TopicBreakdown value={snapshot.topic_breakdown} />
-              <Button asChild className="mt-3" size="sm" variant="outline">
-                <Link href={`/student/results/${snapshot.test_id}`}>Full result &amp; rank</Link>
-              </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/student/results/${snapshot.test_id}`}>Full result &amp; rank</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/student/results/${snapshot.test_id}/responses`}>Check answers</Link>
+                </Button>
+              </div>
             </Card>
           ))}
         </div>

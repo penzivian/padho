@@ -109,6 +109,9 @@ export default async function StudentResultPage({ params }: StudentResultPagePro
               totalStudents={mine ? ranked.length : null}
             />
             <Button asChild variant="outline">
+              <Link href={`/student/results/${params.testId}/responses`}>Check answers</Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link href="/student">Back</Link>
             </Button>
           </div>

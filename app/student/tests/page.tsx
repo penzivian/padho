@@ -133,11 +133,18 @@ export default async function StudentTestsPage() {
                 </span>
               </CardHeader>
               <TestMeta test={test} />
-              {status === "graded" ? (
-                <Button asChild className="mt-3" size="sm" variant="outline">
-                  <Link href={`/student/results/${test.id}`}>Full result &amp; rank</Link>
-                </Button>
-              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {status === "graded" ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/student/results/${test.id}`}>Full result &amp; rank</Link>
+                  </Button>
+                ) : null}
+                {status ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/student/results/${test.id}/responses`}>Check answers</Link>
+                  </Button>
+                ) : null}
+              </div>
             </Card>
           );
         })}
