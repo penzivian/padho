@@ -41,7 +41,9 @@ export default async function TestInstructionsPage({ params, searchParams }: Tes
   const [{ data: paper }, { data: submission }] = await Promise.all([
     admin
       .from("tests")
-      .select("question_paper_id,questions:question_papers(questions(question_type,max_marks))")
+      .select(
+        "question_paper_id,questions:question_papers(questions(question_type,max_marks,negative_marks))"
+      )
       .eq("id", params.testId)
       .single(),
     supabase
@@ -53,11 +55,28 @@ export default async function TestInstructionsPage({ params, searchParams }: Tes
   ]);
 
   const questions =
-    (paper?.questions as unknown as { questions: { question_type: string; max_marks: number }[] } | null)
-      ?.questions ?? [];
+    (
+      paper?.questions as unknown as {
+        questions: { question_type: string; max_marks: number; negative_marks: number }[];
+      } | null
+    )?.questions ?? [];
   const mcqCount = questions.filter((question) => question.question_type === "mcq").length;
   const subjectiveCount = questions.length - mcqCount;
   const totalMarks = questions.reduce((sum, question) => sum + Number(question.max_marks), 0);
+  // Distinct penalties across the paper, so a single uniform rule reads as one line.
+  const penalties = [
+    ...new Set(
+      questions
+        .filter((question) => question.question_type === "mcq")
+        .map((question) => Number(question.negative_marks))
+    )
+  ].filter((value) => value > 0);
+  const negativeMarking =
+    penalties.length === 0
+      ? null
+      : penalties.length === 1
+        ? `−${penalties[0]} per wrong answer`
+        : "varies by question";
 
   // Supabase types the embedded relation as an array; it is one row here.
   const batch = Array.isArray(test.batches) ? test.batches[0] : test.batches;
@@ -109,6 +128,7 @@ export default async function TestInstructionsPage({ params, searchParams }: Tes
           <Row label="Total marks" value={String(totalMarks)} />
           <Row label="Objective (MCQ)" value={String(mcqCount)} />
           <Row label="Descriptive" value={String(subjectiveCount)} />
+          <Row label="Negative marking" value={negativeMarking ?? "None"} />
           <Row label="Duration" value={`${test.duration_minutes} minutes`} />
           <Row label="Starts" value={formatDateTime(test.scheduled_at)} />
         </dl>
@@ -142,6 +162,12 @@ export default async function TestInstructionsPage({ params, searchParams }: Tes
           <li>
             <strong>Clear response</strong> removes your answer for the current question.
           </li>
+          {negativeMarking ? (
+            <li>
+              This paper has <strong>negative marking ({negativeMarking})</strong>. A question
+              you leave unanswered costs you nothing, so skip rather than guess blindly.
+            </li>
+          ) : null}
           <li>
             Every answer is saved to the server as you go, so refreshing the page, losing your
             connection or switching device will not lose your work. Sign in again and resume.

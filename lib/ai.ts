@@ -10,6 +10,7 @@ const draftQuestionSchema = z.object({
   options: z.array(z.string()).nullable().default(null),
   correct_answer: z.string().nullable().default(null),
   max_marks: z.coerce.number().positive().default(1),
+  negative_marks: z.coerce.number().min(0).default(0).optional(),
   rubric: z.string().nullable().default(null)
 });
 
@@ -27,6 +28,9 @@ export type DraftQuestion = {
   options: string[] | null;
   correct_answer: string | null;
   max_marks: number;
+  // Penalty magnitude for a wrong MCQ answer. Optional on the draft so extraction and the
+  // AI path need not supply it; normalizeDraftQuestions defaults it to 0 before saving.
+  negative_marks?: number;
   rubric: string | null;
 };
 export type AiGradeSuggestion = z.infer<typeof gradeSchema>;
@@ -38,6 +42,7 @@ type ParsedDraftQuestion = {
   options?: string[] | null;
   correct_answer?: string | null;
   max_marks?: number;
+  negative_marks?: number;
   rubric?: string | null;
 };
 
@@ -189,6 +194,7 @@ function normalizeAiQuestions(questions: ParsedDraftQuestion[]): DraftQuestion[]
     options: question.options ?? null,
     correct_answer: question.correct_answer ?? null,
     max_marks: question.max_marks ?? 1,
+    negative_marks: question.negative_marks ?? 0,
     rubric: question.rubric ?? null
   }));
 }

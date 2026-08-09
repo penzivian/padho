@@ -25,6 +25,7 @@ type AnswerRow = {
     options: Json | null;
     correct_answer: string | null;
     max_marks: number;
+    negative_marks: number;
     topic: string;
   } | null;
 };
@@ -102,7 +103,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const { data: answerData } = await admin
     .from("answers")
     .select(
-      "id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,topic)"
+      "id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,negative_marks,topic)"
     )
     .eq("submission_id", submission.id);
 
@@ -194,6 +195,9 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                   ) : null}
                   <span className="rounded-md bg-muted px-2 py-1 text-xs">
                     {answer.awarded_marks ?? "–"} / {question?.max_marks ?? 0}
+                    {Number(question?.negative_marks ?? 0) > 0
+                      ? ` · −${question?.negative_marks} if wrong`
+                      : ""}
                   </span>
                 </span>
               </CardHeader>

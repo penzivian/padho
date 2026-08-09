@@ -8,7 +8,8 @@ import {
   buildProgressSnapshot,
   findKeylessMcqs,
   normalizeSuggestedMark,
-  scoreMcqAnswer
+  scoreMcqAnswer,
+  scoreSubmission
 } from "@/lib/grading";
 import { homePathForRole } from "@/lib/routes";
 import { scheduleInputToUtcIso } from "@/lib/time";
@@ -34,6 +35,100 @@ describe("grading", () => {
   it("scores MCQ answers case-insensitively", () => {
     assert.equal(scoreMcqAnswer("Option A", "option a", 2), 2);
     assert.equal(scoreMcqAnswer("Option B", "Option A", 2), 0);
+  });
+
+  it("deducts the penalty for a wrong answer but never for an unattempted one", () => {
+    // The JEE/NEET rule: +4 correct, -1 wrong, 0 left blank. Penalising a blank would make
+    // skipping strictly worse than guessing, which is the opposite of the intent.
+    assert.equal(scoreMcqAnswer("Option A", "Option A", 4, 1), 4);
+    assert.equal(scoreMcqAnswer("Option B", "Option A", 4, 1), -1);
+    assert.equal(scoreMcqAnswer("", "Option A", 4, 1), 0);
+    assert.equal(scoreMcqAnswer("   ", "Option A", 4, 1), 0);
+  });
+
+  it("treats a zero penalty as plain non-negative marking", () => {
+    assert.equal(scoreMcqAnswer("Option B", "Option A", 4), 0);
+    assert.equal(scoreMcqAnswer("Option B", "Option A", 4, 0), 0);
+  });
+
+  it("keeps a persisted negative mark instead of clamping it back to zero", () => {
+    // Rebuilding a snapshot must not quietly erase every deduction.
+    const scored = scoreSubmission([
+      {
+        questionId: "q1",
+        type: "mcq",
+        topic: "Optics",
+        maxMarks: 4,
+        correctAnswer: "A",
+        studentAnswer: "B",
+        awardedMarks: -1,
+        negativeMarks: 1
+      }
+    ]);
+
+    assert.equal(scored[0].awardedMarks, -1);
+  });
+
+  it("floors a subjective mark at zero even when a penalty is passed", () => {
+    const scored = scoreSubmission([
+      {
+        questionId: "s1",
+        type: "subjective",
+        topic: "Optics",
+        maxMarks: 5,
+        correctAnswer: null,
+        studentAnswer: "essay",
+        awardedMarks: -3,
+        negativeMarks: 1
+      }
+    ]);
+
+    assert.equal(scored[0].awardedMarks, 0);
+  });
+
+  it("can produce a net-negative percent, which the DB now permits down to -100", () => {
+    const snapshot = buildProgressSnapshot([
+      {
+        questionId: "a",
+        type: "mcq",
+        topic: "Optics",
+        maxMarks: 4,
+        correctAnswer: "A",
+        studentAnswer: "A",
+        negativeMarks: 1
+      },
+      {
+        questionId: "b",
+        type: "mcq",
+        topic: "Optics",
+        maxMarks: 4,
+        correctAnswer: "A",
+        studentAnswer: "B",
+        negativeMarks: 1
+      },
+      {
+        questionId: "c",
+        type: "mcq",
+        topic: "Optics",
+        maxMarks: 4,
+        correctAnswer: "A",
+        studentAnswer: "C",
+        negativeMarks: 1
+      },
+      // Unattempted: contributes 0, not -1.
+      {
+        questionId: "d",
+        type: "mcq",
+        topic: "Optics",
+        maxMarks: 4,
+        correctAnswer: "A",
+        studentAnswer: "",
+        negativeMarks: 1
+      }
+    ]);
+
+    // earned 4 - 1 - 1 + 0 = 2 of a possible 16
+    assert.equal(snapshot.scorePercent, 12.5);
   });
 
   it("bounds AI suggested marks to the question max", () => {

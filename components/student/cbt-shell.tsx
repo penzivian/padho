@@ -23,6 +23,7 @@ export type CbtQuestion = {
   topic: string;
   options: Json | null;
   max_marks: number;
+  negative_marks: number;
 };
 
 type CbtShellProps = {
@@ -158,7 +159,8 @@ export function CbtShell({
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold">{title}</h1>
           <p className="text-sm text-muted-foreground">
-            Question {index + 1} of {questions.length} · {current.max_marks} marks
+            Question {index + 1} of {questions.length} · +{current.max_marks}
+            {Number(current.negative_marks) > 0 ? ` / −${current.negative_marks}` : ""} marks
           </p>
         </div>
         <div className="flex items-center gap-3">

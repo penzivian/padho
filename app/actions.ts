@@ -360,6 +360,7 @@ export async function savePaperAction(payload: {
     options: question.options,
     correct_answer: question.correct_answer,
     max_marks: question.max_marks,
+    negative_marks: question.negative_marks,
     rubric: question.rubric
   }));
 
@@ -535,7 +536,7 @@ async function finalizeAttempt(submissionId: string, questionPaperId: string) {
   const [{ data: questions }, { data: savedAnswers }] = await Promise.all([
     admin
       .from("questions")
-      .select("id,question_type,correct_answer,max_marks")
+      .select("id,question_type,correct_answer,max_marks,negative_marks")
       .eq("question_paper_id", questionPaperId)
       .order("position", { ascending: true }),
     admin.from("answers").select("question_id,student_answer").eq("submission_id", submissionId)
@@ -558,7 +559,12 @@ async function finalizeAttempt(submissionId: string, questionPaperId: string) {
     // null (not 0) for a keyless MCQ — 0 would read as a finalized wrong answer.
     const awardedMarks =
       question.question_type === "mcq" && question.correct_answer?.trim()
-        ? scoreMcqAnswer(studentAnswer, question.correct_answer, question.max_marks)
+        ? scoreMcqAnswer(
+            studentAnswer,
+            question.correct_answer,
+            question.max_marks,
+            question.negative_marks
+          )
         : null;
 
     return {
@@ -704,7 +710,7 @@ async function rescoreUnapprovedMcqs(paperId: string) {
 
   const { data: questions } = await admin
     .from("questions")
-    .select("id,question_type,correct_answer,max_marks")
+    .select("id,question_type,correct_answer,max_marks,negative_marks")
     .eq("question_paper_id", paperId);
 
   const keyedMcqs = new Map(
@@ -733,7 +739,8 @@ async function rescoreUnapprovedMcqs(paperId: string) {
           awarded_marks: scoreMcqAnswer(
             answer.student_answer,
             question.correct_answer,
-            question.max_marks
+            question.max_marks,
+            question.negative_marks
           )
         })
         .eq("id", answer.id);
@@ -878,7 +885,7 @@ export async function approveGradesAction(formData: FormData) {
 
   const { data: answers, error } = await admin
     .from("answers")
-    .select("id,questions(max_marks)")
+    .select("id,questions(max_marks,question_type,negative_marks)")
     .eq("submission_id", submissionId);
 
   if (error || !answers) redirect(`/teacher/tests?error=${encodeURIComponent(error?.message || "No answers")}`);
@@ -887,7 +894,14 @@ export async function approveGradesAction(formData: FormData) {
     for (const answer of answers) {
       const question = Array.isArray(answer.questions) ? answer.questions[0] : answer.questions;
       const maxMarks = question?.max_marks ?? 0;
-      const awardedMarks = Math.min(readNumber(formData, `mark_${answer.id}`, 0), maxMarks);
+      // Floor at the question's own penalty: negative marking makes a mark below zero legal,
+      // but only down to the configured deduction, and never for a written answer.
+      const floor =
+        question?.question_type === "mcq" ? -Math.abs(question?.negative_marks ?? 0) : 0;
+      const awardedMarks = Math.min(
+        Math.max(readNumber(formData, `mark_${answer.id}`, 0), floor),
+        maxMarks
+      );
       const teacherFeedback = readString(formData, `feedback_${answer.id}`) || null;
 
       await admin
@@ -1122,7 +1136,9 @@ async function createProgressSnapshot(submissionId: string) {
 
   const { data: answers, error: answerError } = await admin
     .from("answers")
-    .select("question_id,student_answer,awarded_marks,questions(question_type,topic,max_marks,correct_answer)")
+    .select(
+      "question_id,student_answer,awarded_marks,questions(question_type,topic,max_marks,negative_marks,correct_answer)"
+    )
     .eq("submission_id", submissionId);
 
   if (answerError || !answers) throw answerError ?? new Error("Answers not found");
@@ -1139,7 +1155,8 @@ async function createProgressSnapshot(submissionId: string) {
         maxMarks: question.max_marks,
         correctAnswer: question.correct_answer,
         studentAnswer: answer.student_answer,
-        awardedMarks: answer.awarded_marks
+        awardedMarks: answer.awarded_marks,
+        negativeMarks: question.negative_marks
       };
     })
   );
@@ -1185,14 +1202,23 @@ async function recordAiUsage(ownerTeacherId: string, actorId: string, feature: s
 function normalizeDraftQuestions(questions: DraftQuestion[]) {
   return questions
     .filter((question) => question.question_text.trim())
-    .map((question) => ({
+    .map((question) => {
+      const maxMarks = Math.max(0.5, Number(question.max_marks) || 1);
+      return {
       ...question,
       topic: question.topic.trim() || "General",
       options: question.question_type === "mcq" ? question.options ?? [] : null,
       correct_answer: question.question_type === "mcq" ? question.correct_answer : null,
       rubric: question.question_type === "subjective" ? question.rubric : null,
-      max_marks: Math.max(0.5, Number(question.max_marks) || 1)
-    }));
+      max_marks: maxMarks,
+      // Capped at max_marks: the DB enforces the same bound, and it keeps a paper from
+      // being able to drive a student below -100%.
+      negative_marks:
+        question.question_type === "mcq"
+          ? Math.min(Math.max(Number(question.negative_marks) || 0, 0), maxMarks)
+          : 0
+    };
+  });
 }
 
 function requestOrigin() {

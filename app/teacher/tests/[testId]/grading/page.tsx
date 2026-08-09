@@ -32,6 +32,7 @@ type SubmissionRow = {
       question_text: string;
       question_type: "mcq" | "subjective";
       max_marks: number;
+      negative_marks: number;
       rubric: string | null;
       correct_answer: string | null;
     } | null;
@@ -59,7 +60,7 @@ export default async function GradingPage({ params }: GradingPageProps) {
   const { data } = await admin
     .from("test_submissions")
     .select(
-      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(position,question_text,question_type,max_marks,rubric,correct_answer))"
+      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(position,question_text,question_type,max_marks,negative_marks,rubric,correct_answer))"
     )
     .eq("test_id", params.testId)
     .not("submitted_at", "is", null)
@@ -193,7 +194,11 @@ export default async function GradingPage({ params }: GradingPageProps) {
                             id={`mark_${answer.id}`}
                             name={`mark_${answer.id}`}
                             type="number"
-                            min="0"
+                            min={
+                              question?.question_type === "mcq"
+                                ? -Number(question?.negative_marks ?? 0)
+                                : 0
+                            }
                             max={question?.max_marks ?? undefined}
                             step="0.5"
                             defaultValue={defaultMark}

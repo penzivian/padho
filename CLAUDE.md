@@ -2,7 +2,22 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (question order fixed and made explicit; answer keys editable after saving; 15-minute entry window; teacher can read any student's responses — see [Recent changes](#recent-changes-2026-07-28-question-order--paper-fixes)).
+**Last updated: 2026-07-28** (negative marking with apply-to-all in the paper builder — see [Recent changes](#recent-changes-2026-07-28-negative-marking)).
+
+## Recent changes (2026-07-28 negative marking)
+
+JEE/NEET-style marking: **+4 correct, −1 wrong, 0 unattempted**, authored in the paper builder.
+
+- **`questions.negative_marks`** (migration `0008_negative_marking.sql`, **applied live**) stores the penalty as a **positive magnitude** — the amount to deduct — so no code has to reason about a double negative. `scoreMcqAnswer` turns it into the negative award. Checked `>= 0 and <= max_marks`.
+- **An unattempted question is never penalised.** That is the JEE rule and the whole point: it keeps "skip if unsure" a real choice. Only a genuinely wrong answer deducts. MCQ-only — a written answer is never negatively marked.
+- **Two constraints had to go, and both would have silently broken this.** `answers_non_negative_awarded_marks` rejected any negative award outright; `progress_score_range` rejected a net-negative percent. The score range is now `-100..100`, which is safe *because* `negative_marks <= max_marks` — the worst possible paper is every question wrong, i.e. exactly −100%.
+- **`scoreSubmission` no longer clamps a persisted mark at 0.** It previously ran every stored mark through `normalizeSuggestedMark`, which floors at zero — that would have wiped every deduction the moment a snapshot was rebuilt (e.g. after an answer-key update). It now floors at the question's own penalty for MCQs, and still at 0 for subjective. `approveGradesAction` clamps the teacher's typed mark to the same range.
+- **Apply-to-all** in the paper builder for both the marks and the penalty, plus per-question fields. Lowering a question's marks pulls its penalty down with it, so the DB check can never trip.
+- Students are told before they answer: the instructions page carries a **Negative marking** row and an extra numbered instruction ("unanswered costs you nothing, so skip rather than guess blindly"), and the CBT header reads `+4 / −1`. `get_student_test_questions` returns `negative_marks` (return type changed, so the function is dropped and recreated). Both response views show `−1 if wrong`.
+- Watch for `-0`: `-Math.abs(0)` produces it, and it would reach the database and render as "-0". `scoreMcqAnswer` guards the zero-penalty case explicitly.
+- Tests 61 → 66. Verified end-to-end against the live DB: apply-to-all set 4 marks and −1 across the paper, the cap clamped an over-large penalty, and a real attempt scored correct **+4**, wrong **−1**, blank **0** → 3/12 = 25%, with the review page showing it. Verification data removed.
+
+## Recent changes (2026-07-28 question order + paper fixes)
 
 ## Recent changes (2026-07-28 question order + paper fixes)
 

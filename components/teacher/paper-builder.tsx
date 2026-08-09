@@ -42,6 +42,8 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
   const [batchId, setBatchId] = useState(batches[0]?.id ?? "");
   const [title, setTitle] = useState("");
   const [answerKeyText, setAnswerKeyText] = useState("");
+  const [bulkMarks, setBulkMarks] = useState("");
+  const [bulkNegative, setBulkNegative] = useState("");
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -81,9 +83,41 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
         options: ["", "", "", ""],
         correct_answer: "",
         max_marks: 1,
+        negative_marks: 0,
         rubric: null
       }
     ]);
+  }
+
+  // "Apply to all" for the marking scheme. Marks go on every question; the penalty only on
+  // MCQs, since a written answer is never negatively marked.
+  function applyMarksToAll() {
+    const value = Math.max(0.5, Number(bulkMarks) || 0);
+    setQuestions((current) =>
+      current.map((question) => ({
+        ...question,
+        max_marks: value,
+        // Keep the invariant the database enforces: penalty can never exceed the marks.
+        negative_marks: Math.min(question.negative_marks ?? 0, value)
+      }))
+    );
+    setMessage(`Set every question to ${value} mark${value === 1 ? "" : "s"}.`);
+  }
+
+  function applyNegativeToAll() {
+    const value = Math.max(0, Number(bulkNegative) || 0);
+    setQuestions((current) =>
+      current.map((question) =>
+        question.question_type === "mcq"
+          ? { ...question, negative_marks: Math.min(value, question.max_marks) }
+          : question
+      )
+    );
+    setMessage(
+      value === 0
+        ? "Turned negative marking off for every MCQ."
+        : `Set every MCQ to −${value} for a wrong answer.`
+    );
   }
 
   function applyKey() {
@@ -251,6 +285,65 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
             >
               Apply answer key
             </Button>
+
+            <div className="grid gap-3 rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Marking scheme</p>
+                <p className="script-note">
+                  Set one rule for the whole paper — JEE style is +4 correct, −1 wrong.
+                  Unanswered questions are never penalised.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex items-end gap-2">
+                  <FormField className="flex-1" htmlFor="bulk_marks" label="Marks per question">
+                    <Input
+                      id="bulk_marks"
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      placeholder="4"
+                      value={bulkMarks}
+                      onChange={(event) => setBulkMarks(event.target.value)}
+                    />
+                  </FormField>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={questions.length === 0 || !bulkMarks.trim()}
+                    onClick={applyMarksToAll}
+                  >
+                    Apply to all
+                  </Button>
+                </div>
+                <div className="flex items-end gap-2">
+                  <FormField className="flex-1" htmlFor="bulk_negative" label="Negative marks">
+                    <Input
+                      id="bulk_negative"
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      placeholder="1"
+                      value={bulkNegative}
+                      onChange={(event) => setBulkNegative(event.target.value)}
+                    />
+                  </FormField>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={questions.length === 0 || !bulkNegative.trim()}
+                    onClick={applyNegativeToAll}
+                  >
+                    Apply to all
+                  </Button>
+                </div>
+              </div>
+              <p className="script-note">
+                Enter the penalty as a positive number — 1 means −1 for a wrong answer. Set it
+                to 0 to switch negative marking off. MCQs only.
+              </p>
+            </div>
+
             {message ? <p className="rounded-md border bg-muted p-3 text-sm">{message}</p> : null}
           </div>
         </Card>
@@ -311,10 +404,36 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
                     min="0.5"
                     step="0.5"
                     value={question.max_marks}
-                    onChange={(event) => updateQuestion(index, { max_marks: Number(event.target.value) })}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      updateQuestion(index, {
+                        max_marks: value,
+                        negative_marks: Math.min(question.negative_marks ?? 0, value)
+                      });
+                    }}
                   />
                 </FormField>
               </div>
+              {question.question_type === "mcq" ? (
+                <FormField htmlFor={`negative_${index}`} label="Negative marks (wrong answer)">
+                  <Input
+                    id={`negative_${index}`}
+                    type="number"
+                    min="0"
+                    max={question.max_marks}
+                    step="0.25"
+                    value={question.negative_marks ?? 0}
+                    onChange={(event) =>
+                      updateQuestion(index, {
+                        negative_marks: Math.min(
+                          Math.max(Number(event.target.value) || 0, 0),
+                          question.max_marks
+                        )
+                      })
+                    }
+                  />
+                </FormField>
+              ) : null}
               {question.question_type === "mcq" ? (
                 <>
                   <FormField htmlFor={`options_${index}`} label="Options (one per line)">

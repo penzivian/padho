@@ -104,6 +104,7 @@ export type Database = {
           options: Json | null;
           correct_answer: string | null;
           max_marks: number;
+          negative_marks: number;
           rubric: string | null;
           position: number;
           created_at: string;
@@ -117,6 +118,7 @@ export type Database = {
           options?: Json | null;
           correct_answer?: string | null;
           max_marks?: number;
+          negative_marks?: number;
           rubric?: string | null;
           position?: number;
           created_at?: string;
@@ -256,6 +258,7 @@ export type Database = {
           topic: string;
           options: Json | null;
           max_marks: number;
+          negative_marks: number;
         }[];
       };
     };
