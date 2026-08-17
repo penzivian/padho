@@ -37,6 +37,16 @@ function zoneOffsetMinutes(instant: Date) {
   return (wallClock - instant.getTime()) / 60_000;
 }
 
+// Start of the current IST calendar month, as a UTC instant.
+//
+// `new Date(); setDate(1); setHours(0,0,0,0)` computes this in the *process's* zone, so on
+// Vercel (UTC) the monthly AI cap rolled over at 05:30 IST on the 1st — the same defect
+// shape as the test scheduled for 12:30 AM that went live at 6:00.
+export function monthStartUtcIso(now: Date = new Date()) {
+  const istWallClock = utcIsoToScheduleInput(now.toISOString());
+  return scheduleInputToUtcIso(`${istWallClock.slice(0, 7)}-01T00:00`) as string;
+}
+
 // Inverse of scheduleInputToUtcIso: renders a stored instant as the IST wall clock that a
 // <input type="datetime-local"> expects, so the reschedule form prefills with the time the
 // teacher originally set rather than a UTC one.

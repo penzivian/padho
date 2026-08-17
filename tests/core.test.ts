@@ -12,7 +12,7 @@ import {
   scoreSubmission
 } from "@/lib/grading";
 import { homePathForRole } from "@/lib/routes";
-import { scheduleInputToUtcIso } from "@/lib/time";
+import { monthStartUtcIso, scheduleInputToUtcIso } from "@/lib/time";
 import { formatDateTime, generateInviteCode } from "@/lib/utils";
 
 describe("invite codes", () => {
@@ -349,6 +349,23 @@ describe("schedule input timezone", () => {
     const iso = scheduleInputToUtcIso("2026-08-05T10:00");
     assert.ok(iso);
     assert.equal(formatDateTime(iso), "5 Aug 2026, 10:00 am");
+  });
+
+  it("starts the AI-credit month at IST midnight on the 1st, not the server's", () => {
+    // The cap previously rolled over at 05:30 IST on the 1st because the boundary was
+    // computed in the process's zone (UTC on Vercel).
+    assert.equal(
+      monthStartUtcIso(new Date("2026-07-28T17:00:00.000Z")),
+      "2026-06-30T18:30:00.000Z" // = 1 Jul 2026, 00:00 IST
+    );
+  });
+
+  it("uses the IST month even for an instant that is still last month in UTC", () => {
+    // 1 Aug 2026 04:00 IST is 31 Jul 2026 22:30 UTC — the IST month has already turned.
+    assert.equal(
+      monthStartUtcIso(new Date("2026-07-31T22:30:00.000Z")),
+      "2026-07-31T18:30:00.000Z" // = 1 Aug 2026, 00:00 IST
+    );
   });
 
   it("rejects a malformed value instead of storing a bad instant", () => {

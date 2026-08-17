@@ -13,8 +13,9 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
+import { loadCalibrationBlock } from "@/lib/calibration-source";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
-import { scheduleInputToUtcIso } from "@/lib/time";
+import { monthStartUtcIso, scheduleInputToUtcIso } from "@/lib/time";
 import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -846,11 +847,20 @@ export async function requestGradeSuggestionsAction(formData: FormData) {
       if (!question || question.question_type !== "subjective") continue;
 
       await enforceAiLimit(user.id, "subjective_grading");
+      // Few-shot the model on this teacher's own approved marks for this same question.
+      // Returns "" until there are enough of them, in which case the prompt is unchanged.
+      // Teacher-only path: this block must never reach a student-facing payload.
+      const calibration = await loadCalibrationBlock(supabase, {
+        questionId: answer.question_id,
+        maxMarks: question.max_marks,
+        excludeAnswerId: answer.id
+      });
       const suggestion = await gradeSubjectiveAnswer({
         question: question.question_text,
         rubric: question.rubric,
         maxMarks: question.max_marks,
-        answer: answer.student_answer
+        answer: answer.student_answer,
+        calibration
       });
 
       await admin
@@ -1091,6 +1101,31 @@ export async function askDoubtAction(
     return { ok: false, message: "Join a batch before asking doubts" };
   }
 
+  // Doubts are an open text box straight to the model, so a student sitting a CBT could
+  // paste the exam question into another tab and get it solved. The questions path enforces
+  // this; the doubts path had no notion of a test at all. Scoped as narrowly as possible:
+  // blocked only while THIS student has an unsubmitted attempt on a test that is open right
+  // now — not merely because some test exists somewhere.
+  const { data: liveAttempts } = await admin
+    .from("test_submissions")
+    .select("id,tests(scheduled_at,duration_minutes,closed_at)")
+    .eq("student_id", user.id)
+    .is("submitted_at", null);
+
+  const sittingATest = (liveAttempts ?? []).some((attempt) => {
+    const test = Array.isArray(attempt.tests) ? attempt.tests[0] : attempt.tests;
+    if (!test || test.closed_at) return false;
+    const startsAt = new Date(test.scheduled_at).getTime();
+    return Date.now() >= startsAt && Date.now() <= startsAt + test.duration_minutes * 60_000;
+  });
+
+  if (sittingATest) {
+    return {
+      ok: false,
+      message: "You have a test in progress. Doubts unlock again once you submit it."
+    };
+  }
+
   try {
     await enforceAiLimit(ownerTeacherId, "doubt_solving");
     const answer = await answerDoubt(question, batch.exam_target);
@@ -1176,15 +1211,14 @@ async function createProgressSnapshot(submissionId: string) {
 async function enforceAiLimit(ownerTeacherId: string, feature: string) {
   const admin = createSupabaseAdminClient();
   const limit = Number(optionalEnv("AI_MONTHLY_TEACHER_LIMIT", "200"));
-  const since = new Date();
-  since.setDate(1);
-  since.setHours(0, 0, 0, 0);
+  // The billing month is an IST calendar month, like every other wall-clock notion here.
+  const since = monthStartUtcIso();
 
   const { count, error } = await admin
     .from("ai_usage_events")
     .select("id", { count: "exact", head: true })
     .eq("owner_teacher_id", ownerTeacherId)
-    .gte("created_at", since.toISOString());
+    .gte("created_at", since);
 
   if (error) throw error;
   if ((count ?? 0) >= limit) throw new Error(`Monthly AI limit reached for ${feature}`);

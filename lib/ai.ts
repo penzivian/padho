@@ -60,6 +60,10 @@ type GradeInput = {
   rubric: string | null;
   maxMarks: number;
   answer: string;
+  // Few-shot block of this teacher's own previously-approved marks for this question, or ""
+  // when there is not enough signal — see lib/calibration.ts. Empty leaves the prompt
+  // byte-for-byte what it was before calibration existed.
+  calibration?: string;
 };
 
 export async function generateQuestions(input: GenerateQuestionInput) {
@@ -133,12 +137,17 @@ export async function gradeSubjectiveAnswer(input: GradeInput) {
     };
   }
 
-  const prompt = `Grade this student answer as a suggestion for the teacher.
-Question: ${input.question}
-Rubric: ${input.rubric || "Use a fair subject-specific rubric."}
-Max marks: ${input.maxMarks}
-Student answer: ${input.answer}
-Return ONLY JSON with suggested_marks and feedback.`;
+  const prompt = [
+    "Grade this student answer as a suggestion for the teacher.",
+    `Question: ${input.question}`,
+    `Rubric: ${input.rubric || "Use a fair subject-specific rubric."}`,
+    `Max marks: ${input.maxMarks}`,
+    input.calibration,
+    `Student answer: ${input.answer}`,
+    "Return ONLY JSON with suggested_marks and feedback."
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return claudeValidatedJson(prompt, gradeSchema);
 }

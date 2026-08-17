@@ -2,7 +2,27 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (negative marking with apply-to-all in the paper builder — see [Recent changes](#recent-changes-2026-07-28-negative-marking)).
+**Last updated: 2026-07-28** (grading calibration; AI-doubts hole during a live test closed; AI cap month fixed to IST — see [Recent changes](#recent-changes-2026-07-28-grading-calibration)).
+
+## Recent changes (2026-07-28 grading calibration)
+
+**Subjective grading suggestions now few-shot on the teacher's own approved marks** for that same question, so over a term they converge on that teacher's standard instead of a generic rubric reading. Guardrail 1 is untouched — this improves the *suggestion*; a teacher still approves before `awarded_marks` and a snapshot are written.
+
+- **`lib/calibration.ts`** is pure and unit-tested. The non-obvious part is `selectCalibrationExamples`: the naive "take the k most recent approved marks" is **wrong**, because on a question most of the batch did well on, every sample sits at full marks and the model learns "award full marks". It buckets by mark band and takes round-robin across bands. On a realistic skewed batch (30 students, 19 at full marks) naive returns `[5,5,5,5,5,5]` and band selection returns `[0,0,1,2.5,4,5]`. **Keep the banding even if everything else is restructured.** Deterministic — ties break by id, so a suggestion is reproducible.
+- **`hasUsefulCalibration`** requires ≥3 examples *and* more than one distinct mark; otherwise the block is `""` and the prompt is byte-for-byte what it was before. That is what makes this safe to leave on globally rather than behind a flag — it switches itself on per question once a teacher has marked enough of it.
+- **`lib/calibration-source.ts` deliberately uses the RLS-respecting client, not admin.** `answers_select_visible` grants a teacher only the answers on tests they own, so the query structurally cannot reach another teacher's marking — which is the semantics we want, since the point is to match *this* teacher's standard. The query filters `approved_at is not null` **and** `awarded_marks is not null` (a row can carry an AI suggestion with no approval), `test_submissions.submitted_at is not null`, and `questions.question_type = 'subjective'` (MCQ marks can be negative since 0008). It over-fetches 200 rows because selection is band-based.
+- **No migration.** An optional partial index on `answers (question_id, awarded_marks) where approved_at is not null` is available if the query ever shows up slow.
+
+### Two bugs found while in here
+
+- **AI doubts were completely ungated during a live test.** `askDoubtAction` had no notion of a test at all, so a student mid-CBT could open `/student/doubts` in another tab and paste the exam question in. Now blocked, scoped as narrowly as possible: only while *that* student has an unsubmitted attempt on a test that is open right now.
+- **`enforceAiLimit`'s monthly window was computed in the process's timezone**, so on Vercel (UTC) the cap rolled over at 05:30 IST on the 1st — the same defect shape as the test scheduled for 12:30 AM that went live at 6:00. `monthStartUtcIso()` in `lib/time.ts` now resolves it in IST. **`lib/nav-counts.ts` had the same window duplicated**, so the AI-credits meter in the profile menu disagreed with the cap that actually bites; both now share the helper.
+
+Tests 66 → 84, green under `TZ=UTC`, `TZ=Asia/Kolkata` and `TZ=America/New_York`.
+
+**Deliberately not built:** the question bank (`bank_questions` separate from `questions`, since papers must copy rather than reference), pgvector, ingest jobs. Revisit only once calibration has been live a week and there is a signal that retrieval is the bottleneck.
+
+## Recent changes (2026-07-28 negative marking)
 
 ## Recent changes (2026-07-28 negative marking)
 
