@@ -11,6 +11,7 @@ import {
   type DraftQuestionsState
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { BankPicker } from "@/components/teacher/bank-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
@@ -117,6 +118,15 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
       value === 0
         ? "Turned negative marking off for every MCQ."
         : `Set every MCQ to −${value} for a wrong answer.`
+    );
+  }
+
+  function addFromBank(incoming: DraftQuestion[]) {
+    if (incoming.length === 0) return;
+    setQuestions((current) => [...current, ...incoming]);
+    setMessage(
+      `Added ${incoming.length} question${incoming.length === 1 ? "" : "s"} from your bank. ` +
+        "They are copies — editing them here does not change your bank."
     );
   }
 
@@ -239,6 +249,8 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
           </form>
         </Card>
       </div>
+
+      <BankPicker onAdd={addFromBank} />
 
       <section className="grid gap-4">
         <Card>

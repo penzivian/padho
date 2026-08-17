@@ -1,5 +1,7 @@
 "use server";
 
+import { createHash } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -13,6 +15,7 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
+import { normalizeForFingerprint, sanitizeSearchTerm, topicKey } from "@/lib/question-bank";
 import { loadCalibrationBlock } from "@/lib/calibration-source";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
 import { monthStartUtcIso, scheduleInputToUtcIso } from "@/lib/time";
@@ -959,6 +962,135 @@ export async function toggleRankVisibilityAction(formData: FormData) {
   redirect(`/teacher/tests/${testId}/results`);
 }
 
+// Copies a saved paper's questions into the teacher's own bank. A COPY, deliberately: the
+// paper keeps its own rows, so editing a bank question later can never retroactively change
+// a paper students already sat.
+//
+// Idempotent — a unique index on (owner, fingerprint) means saving the same paper twice adds
+// nothing the second time.
+export async function savePaperToBankAction(formData: FormData) {
+  const { user } = await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const paperId = readString(formData, "paper_id");
+
+  // RLS gate: question_papers is teacher-scoped, so this returns nothing for another
+  // teacher's paper, and questions_select_teacher does the same for the rows below.
+  const { data: paper } = await supabase
+    .from("question_papers")
+    .select("id,title,batches(subject)")
+    .eq("id", paperId)
+    .maybeSingle();
+
+  if (!paper) redirect("/teacher/papers?error=Paper%20not%20available");
+
+  const { data: questions } = await supabase
+    .from("questions")
+    .select("question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric")
+    .eq("question_paper_id", paperId)
+    .order("position", { ascending: true });
+
+  if (!questions?.length) redirect("/teacher/papers?error=That%20paper%20has%20no%20questions");
+
+  const batch = Array.isArray(paper.batches) ? paper.batches[0] : paper.batches;
+  const subject = (batch as { subject: string } | null | undefined)?.subject ?? "";
+
+  const rows: Insert<"bank_questions">[] = [];
+  for (const question of questions) {
+    const options = Array.isArray(question.options)
+      ? question.options.filter((option): option is string => typeof option === "string")
+      : null;
+
+    // The bank mirrors questions_mcq_shape; an MCQ with fewer than two options would be
+    // rejected by the check constraint, so skip rather than fail the whole import.
+    if (question.question_type === "mcq" && (!options || options.length < 2)) continue;
+
+    rows.push({
+      owner_teacher_id: user.id,
+      question_text: question.question_text,
+      question_type: question.question_type,
+      topic: question.topic,
+      subject,
+      options: question.question_type === "mcq" ? options : null,
+      correct_answer: question.correct_answer,
+      max_marks: question.max_marks,
+      negative_marks: question.negative_marks,
+      rubric: question.rubric,
+      source_label: paper.title,
+      source_paper_id: paper.id,
+      fingerprint: fingerprintQuestion({
+        questionText: question.question_text,
+        questionType: question.question_type,
+        options
+      })
+    });
+  }
+
+  // Deduplicate within the paper itself before hitting the index, since ON CONFLICT cannot
+  // resolve two conflicting rows inside one INSERT.
+  const seen = new Set<string>();
+  const unique = rows.filter((row) => {
+    if (seen.has(row.fingerprint)) return false;
+    seen.add(row.fingerprint);
+    return true;
+  });
+
+  const { data: inserted, error } = await supabase
+    .from("bank_questions")
+    .upsert(unique, { onConflict: "owner_teacher_id,fingerprint", ignoreDuplicates: true })
+    .select("id");
+
+  if (error) redirect(`/teacher/papers?error=${encodeURIComponent(error.message)}`);
+
+  const added = inserted?.length ?? 0;
+  revalidatePath("/teacher/papers");
+  redirect(`/teacher/papers?banked=${added}&of=${unique.length}`);
+}
+
+export type BankSearchResult = {
+  ok: boolean;
+  message?: string;
+  questions?: DraftQuestion[];
+};
+
+// Searches the teacher's bank and returns rows already shaped as paper-builder drafts, so
+// the builder can append them with no translation step.
+export async function searchBankAction(formData: FormData): Promise<BankSearchResult> {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const term = sanitizeSearchTerm(readString(formData, "term"));
+  const topic = readString(formData, "topic");
+  const type = readString(formData, "question_type");
+
+  let query = supabase
+    .from("bank_questions")
+    .select("question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  // RLS already restricts this to the teacher's own rows; these are the user's filters.
+  if (term) query = query.textSearch("search_vector", term, { type: "websearch" });
+  if (topic) query = query.eq("topic_key", topicKey(topic));
+  if (type === "mcq" || type === "subjective") query = query.eq("question_type", type);
+
+  const { data, error } = await query;
+  if (error) return { ok: false, message: error.message };
+
+  const questions: DraftQuestion[] = (data ?? []).map((row) => ({
+    question_text: row.question_text,
+    question_type: row.question_type,
+    topic: row.topic,
+    options: Array.isArray(row.options)
+      ? row.options.filter((option): option is string => typeof option === "string")
+      : null,
+    correct_answer: row.correct_answer,
+    max_marks: Number(row.max_marks),
+    negative_marks: Number(row.negative_marks),
+    rubric: row.rubric
+  }));
+
+  return { ok: true, questions };
+}
+
 export async function publishPracticeAction(formData: FormData) {
   const { user } = await requireRole("teacher");
   const supabase = createSupabaseServerClient();
@@ -1263,6 +1395,24 @@ function requestOrigin() {
   const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
   const protocol = headerList.get("x-forwarded-proto") ?? "http";
   return `${protocol}://${host}`;
+}
+
+// SHA-256 of the normalized stem+options. Fixed length so it indexes cleanly, and the
+// normalization lives in lib/question-bank.ts where it is unit-tested.
+function fingerprintQuestion(candidate: {
+  questionText: string;
+  questionType: "mcq" | "subjective";
+  options: string[] | null;
+}) {
+  return createHash("sha256")
+    .update(
+      normalizeForFingerprint({
+        questionText: candidate.questionText,
+        questionType: candidate.questionType,
+        options: candidate.options
+      })
+    )
+    .digest("hex");
 }
 
 function readString(formData: FormData, key: string) {

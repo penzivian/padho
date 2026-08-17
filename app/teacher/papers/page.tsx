@@ -1,7 +1,12 @@
 import Link from "next/link";
-import { FilePlus2, X } from "lucide-react";
+import { FilePlus2, Library, X } from "lucide-react";
 
-import { publishPracticeAction, unpublishPracticeAction, updateAnswerKeyAction } from "@/app/actions";
+import {
+  publishPracticeAction,
+  savePaperToBankAction,
+  unpublishPracticeAction,
+  updateAnswerKeyAction
+} from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +39,7 @@ type PracticeSetRow = {
 };
 
 type PapersPageProps = {
-  searchParams?: { error?: string; applied?: string };
+  searchParams?: { error?: string; applied?: string; banked?: string; of?: string };
 };
 
 export default async function TeacherPapersPage({ searchParams }: PapersPageProps) {
@@ -70,6 +75,16 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
       {searchParams?.error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {searchParams.error}
+        </p>
+      ) : null}
+
+      {searchParams?.banked ? (
+        <p className="rounded-md border border-primary/30 bg-secondary/50 p-3 text-sm">
+          Added {searchParams.banked} of {searchParams.of} questions to your bank
+          {Number(searchParams.banked) < Number(searchParams.of ?? 0)
+            ? " — the rest were already in it."
+            : "."}{" "}
+          Reuse them from the New paper screen.
         </p>
       ) : null}
 
@@ -159,6 +174,13 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
                     </form>
                   </div>
                 ))}
+              <form action={savePaperToBankAction}>
+                <input type="hidden" name="paper_id" value={paper.id} />
+                <SubmitButton pendingText="Saving" variant="outline">
+                  <Library className="h-4 w-4" aria-hidden="true" />
+                  Save {paper.questions.length} to my bank
+                </SubmitButton>
+              </form>
               {batches.length > 0 ? (
                 <form action={publishPracticeAction} className="flex items-end gap-2">
                   <input type="hidden" name="paper_id" value={paper.id} />

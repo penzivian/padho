@@ -2,7 +2,27 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (grading calibration; AI-doubts hole during a live test closed; AI cap month fixed to IST — see [Recent changes](#recent-changes-2026-07-28-grading-calibration)).
+**Last updated: 2026-07-28** (question bank, Stage A — see [Recent changes](#recent-changes-2026-07-28-question-bank-stage-a)).
+
+> ⚠️ **Migration `0009_question_bank.sql` is NOT applied.** The Supabase MCP connection was failing auth for the whole session. Apply it before the bank features will work — until then "Save to my bank" and the bank picker will error against a missing table.
+
+## Recent changes (2026-07-28 question bank, Stage A)
+
+A reusable pool of questions a teacher builds up and assembles papers from. **Seeded from their own existing papers** — no external sourcing, no legal question, and it proves the search-and-assemble UX before any ingestion effort.
+
+**This is deliberately not RAG.** Most of what a question bank does is *search*, not retrieval-augmented *generation*: if the teacher picks real existing questions there is no generation step. Postgres full-text is the right tool at this size. Embeddings earn their place only for cross-source dedupe, "more like this", and grounded generation — none of which matter until the bank is large. Do not add pgvector before there is a signal that keyword search is failing.
+
+- **`bank_questions` is separate from `questions`, and papers COPY from it.** If a paper referenced a bank row, fixing a typo in that row would retroactively change a paper students had already sat. `savePaperToBankAction` copies out; `BankPicker` copies in as builder drafts.
+- **First table in the app that could be shared across teachers.** Everything else is teacher-scoped via `is_batch_teacher`/`is_test_teacher`. RLS is `owner_teacher_id = auth.uid() or is_public`, with `is_public` defaulting false — the door is left open for a shared corpus without opening it.
+- **`topic` is free text and drives every analytic** (progress snapshots, reteach radar, topic bars). A bank with its own taxonomy would silently fragment "Kinematics"/"kinematics" into separate topics and break the reteach radar. `topic_key` (generated `lower(btrim(topic))`) groups and filters case-insensitively **without rewriting the teacher's own label**, which is what the paper actually carries. `groupTopics` picks the nicest label among variants.
+- **Idempotent re-import** via a unique index on `(owner_teacher_id, fingerprint)`, where the fingerprint is SHA-256 of a normalized stem+options. Normalization discards case, punctuation, whitespace and option *order* — the same paper re-extracted from a different PDF rarely comes back byte-identical. **Apostrophes are deleted, not spaced**: "Newton's" vs "Newtons" must match, and turning `'` into a space splits it into "newton s". Options are part of the fingerprint because hundreds of questions share the stem "Which of the following is correct?".
+- The bank mirrors `questions_mcq_shape` and `negative_marks <= max_marks`; an MCQ with fewer than two options is skipped on import rather than failing the whole paper.
+
+Tests 84 → 96.
+
+**Deferred (Stages B/C):** pgvector for dedupe and "more like this"; grounded generation from a corpus. Revisit only once the bank is big enough that full-text search visibly misses things.
+
+## Recent changes (2026-07-28 grading calibration)
 
 ## Recent changes (2026-07-28 grading calibration)
 

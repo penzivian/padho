@@ -198,6 +198,49 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["answers"]["Insert"]>;
         Relationships: [];
       };
+      bank_questions: {
+        Row: {
+          id: string;
+          owner_teacher_id: string;
+          question_text: string;
+          question_type: QuestionType;
+          topic: string;
+          topic_key: string;
+          subject: string;
+          options: Json | null;
+          correct_answer: string | null;
+          max_marks: number;
+          negative_marks: number;
+          rubric: string | null;
+          source_label: string;
+          source_paper_id: string | null;
+          difficulty: string | null;
+          is_public: boolean;
+          fingerprint: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_teacher_id: string;
+          question_text: string;
+          question_type: QuestionType;
+          topic?: string;
+          subject?: string;
+          options?: Json | null;
+          correct_answer?: string | null;
+          max_marks?: number;
+          negative_marks?: number;
+          rubric?: string | null;
+          source_label?: string;
+          source_paper_id?: string | null;
+          difficulty?: string | null;
+          is_public?: boolean;
+          fingerprint: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["bank_questions"]["Insert"]>;
+        Relationships: [];
+      };
       progress_snapshots: {
         Row: {
           id: string;
