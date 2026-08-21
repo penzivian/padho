@@ -15,10 +15,6 @@ The question bank gains a **platform-owned corpus**: questions the owner publish
 
 Tests 96 → 99.
 
-## Recent changes (2026-07-28 question bank, Stage A — see [Recent changes](#recent-changes-2026-07-28-question-bank-stage-a)).
-
-> ⚠️ **Migration `0009_question_bank.sql` is NOT applied.** The Supabase MCP connection was failing auth for the whole session. Apply it before the bank features will work — until then "Save to my bank" and the bank picker will error against a missing table.
-
 ## Recent changes (2026-07-28 question bank, Stage A)
 
 A reusable pool of questions a teacher builds up and assembles papers from. **Seeded from their own existing papers** — no external sourcing, no legal question, and it proves the search-and-assemble UX before any ingestion effort.
@@ -34,8 +30,6 @@ A reusable pool of questions a teacher builds up and assembles papers from. **Se
 Tests 84 → 96.
 
 **Deferred (Stages B/C):** pgvector for dedupe and "more like this"; grounded generation from a corpus. Revisit only once the bank is big enough that full-text search visibly misses things.
-
-## Recent changes (2026-07-28 grading calibration)
 
 ## Recent changes (2026-07-28 grading calibration)
 
@@ -57,8 +51,6 @@ Tests 66 → 84, green under `TZ=UTC`, `TZ=Asia/Kolkata` and `TZ=America/New_Yor
 
 ## Recent changes (2026-07-28 negative marking)
 
-## Recent changes (2026-07-28 negative marking)
-
 JEE/NEET-style marking: **+4 correct, −1 wrong, 0 unattempted**, authored in the paper builder.
 
 - **`questions.negative_marks`** (migration `0008_negative_marking.sql`, **applied live**) stores the penalty as a **positive magnitude** — the amount to deduct — so no code has to reason about a double negative. `scoreMcqAnswer` turns it into the negative award. Checked `>= 0 and <= max_marks`.
@@ -69,8 +61,6 @@ JEE/NEET-style marking: **+4 correct, −1 wrong, 0 unattempted**, authored in t
 - Students are told before they answer: the instructions page carries a **Negative marking** row and an extra numbered instruction ("unanswered costs you nothing, so skip rather than guess blindly"), and the CBT header reads `+4 / −1`. `get_student_test_questions` returns `negative_marks` (return type changed, so the function is dropped and recreated). Both response views show `−1 if wrong`.
 - Watch for `-0`: `-Math.abs(0)` produces it, and it would reach the database and render as "-0". `scoreMcqAnswer` guards the zero-penalty case explicitly.
 - Tests 61 → 66. Verified end-to-end against the live DB: apply-to-all set 4 marks and −1 across the paper, the cap clamped an over-large penalty, and a real attempt scored correct **+4**, wrong **−1**, blank **0** → 3/12 = 25%, with the review page showing it. Verification data removed.
-
-## Recent changes (2026-07-28 question order + paper fixes)
 
 ## Recent changes (2026-07-28 question order + paper fixes)
 
@@ -85,8 +75,6 @@ JEE/NEET-style marking: **+4 correct, −1 wrong, 0 unattempted**, authored in t
 - **Students get the same review of their own paper** — `/student/results/[testId]/responses` ("Check answers" on the tests list, the result page and the dashboard). Two gates, both required: the student must own a **submitted** attempt, and **the test must be over** (window ended or teacher-closed). The second gate is the important one — a student who finishes early would otherwise be handed the answer key while classmates are still writing. Students cannot SELECT `questions` at all (teacher-only policy), so the paper is read with the admin client only after both gates. **`rubric` and `ai_suggested_marks`/`ai_feedback` are deliberately not selected** — a rubric is the teacher's marking guide, and an AI mark is not final until approved. Available while still `pending`, showing "–" for marks the teacher has not approved yet.
 - **Both results pages now filter `submitted_at is not null`** — an attempt in progress was leaking into the rank list.
 - Tests 58 → 61; lint and build clean. Verified end-to-end against the live DB, then all verification data removed.
-
-## Recent changes (2026-07-28 CBT test interface)
 
 ## Recent changes (2026-07-28 CBT test interface)
 
