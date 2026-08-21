@@ -2,7 +2,20 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (question bank, Stage A — see [Recent changes](#recent-changes-2026-07-28-question-bank-stage-a)).
+**Last updated: 2026-07-28** (shared question library — owner-published questions every teacher can reuse).
+
+## Recent changes (2026-07-28 shared library)
+
+The question bank gains a **platform-owned corpus**: questions the owner publishes once, visible to every teacher. This is what the bank was designed for — `bank_questions` RLS has always been `owner_teacher_id = auth.uid() or is_public`, so the read path needed **no change at all**; a row flipped to `is_public` is immediately searchable by every teacher.
+
+- **`/teacher/library` is owner-only, gated on `PLATFORM_OWNER_EMAILS`** (comma-separated, in env). Deliberately not a role: `profile_role` is an enum, and adding a value to it cannot be *used* in the transaction that adds it, forcing a two-step deploy. **Unset denies everyone** — it fails closed, which matters because anything published here reaches every teacher on the platform.
+- Ingest reuses the existing `extractDraftQuestionsAction` pipeline unchanged. The only difference is where the rows land (`is_public = true`) and who sees them. Same answer-key paste box, same fingerprint dedupe.
+- **`BankPicker` gained a scope toggle** — Everything / My bank / Shared library — plus a source badge so a teacher can see a question came from "JEE Main 2024 · Shift 1" rather than their own paper. Scope `all` needs no filter at all: RLS already returns exactly own-plus-public.
+- **Scanned PDFs still will not extract.** `unpdf` reads a text layer; a photographed or scanned past paper has none, and needs the AI vision path (an Anthropic key) or manual entry. The ingest screen says so rather than failing silently.
+
+Tests 96 → 99.
+
+## Recent changes (2026-07-28 question bank, Stage A — see [Recent changes](#recent-changes-2026-07-28-question-bank-stage-a)).
 
 > ⚠️ **Migration `0009_question_bank.sql` is NOT applied.** The Supabase MCP connection was failing auth for the whole session. Apply it before the bank features will work — until then "Save to my bank" and the bank picker will error against a missing table.
 

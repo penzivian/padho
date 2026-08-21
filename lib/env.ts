@@ -22,3 +22,19 @@ export function aiMockMode() {
 export function devLoginCodesEnabled() {
   return process.env.DEV_LOGIN_CODES === "true" && process.env.NODE_ENV !== "production";
 }
+
+// Comma-separated emails allowed to publish into the shared question library. There is no
+// admin role in profile_role, and adding one would mean an enum migration that cannot be
+// used in the same transaction that adds it — an env list is simpler and needs no schema.
+export function platformOwnerEmails() {
+  return optionalEnv("PLATFORM_OWNER_EMAILS")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isPlatformOwner(email: string | null | undefined) {
+  if (!email) return false;
+  const owners = platformOwnerEmails();
+  return owners.length > 0 && owners.includes(email.toLowerCase());
+}

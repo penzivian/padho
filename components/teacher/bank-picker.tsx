@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Library, Plus } from "lucide-react";
+import { Globe2, Library, Plus } from "lucide-react";
 
-import { searchBankAction, type BankSearchResult } from "@/app/actions";
+import { searchBankAction, type BankScope, type BankSearchResult, type BankSearchRow } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
@@ -22,7 +22,8 @@ export function BankPicker({ onAdd }: BankPickerProps) {
   const [term, setTerm] = useState("");
   const [topic, setTopic] = useState("");
   const [questionType, setQuestionType] = useState("");
-  const [results, setResults] = useState<DraftQuestion[]>([]);
+  const [scope, setScope] = useState<BankScope>("all");
+  const [results, setResults] = useState<BankSearchRow[]>([]);
   const [message, setMessage] = useState("");
   const [added, setAdded] = useState<Set<number>>(new Set());
   const [isSearching, startSearching] = useTransition();
@@ -32,6 +33,7 @@ export function BankPicker({ onAdd }: BankPickerProps) {
     formData.set("term", term);
     formData.set("topic", topic);
     formData.set("question_type", questionType);
+    formData.set("scope", scope);
 
     startSearching(async () => {
       const result: BankSearchResult = await searchBankAction(formData);
@@ -45,7 +47,9 @@ export function BankPicker({ onAdd }: BankPickerProps) {
       setResults(result.questions ?? []);
       setMessage(
         (result.questions ?? []).length === 0
-          ? "Nothing matched. Save a paper to your bank from the Question papers screen first."
+          ? scope === "library"
+            ? "Nothing in the shared library matches yet."
+            : "Nothing matched. Save a paper to your bank from the Question papers screen first."
           : ""
       );
     });
@@ -61,6 +65,26 @@ export function BankPicker({ onAdd }: BankPickerProps) {
       </CardHeader>
 
       <div className="grid gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              ["all", "Everything"],
+              ["mine", "My bank"],
+              ["library", "Shared library"]
+            ] as [BankScope, string][]
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={scope === value ? "default" : "outline"}
+              onClick={() => setScope(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_0.8fr_auto] sm:items-end">
           <FormField htmlFor="bank_term" label="Search">
             <Input
@@ -130,6 +154,14 @@ export function BankPicker({ onAdd }: BankPickerProps) {
                         ? ` · −${question.negative_marks}`
                         : ""}
                     </p>
+                    {question.is_public ? (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                        <Globe2 className="h-3 w-3" aria-hidden="true" />
+                        {question.source_label || "Shared library"}
+                      </span>
+                    ) : question.source_label ? (
+                      <span className="script-note mt-1 block">from {question.source_label}</span>
+                    ) : null}
                   </div>
                   <Button
                     type="button"

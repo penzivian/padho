@@ -13,6 +13,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { requireProfile } from "@/lib/auth";
+import { isPlatformOwner } from "@/lib/env";
 import { findKeylessMcqs } from "@/lib/grading";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
@@ -43,7 +44,7 @@ type PapersPageProps = {
 };
 
 export default async function TeacherPapersPage({ searchParams }: PapersPageProps) {
-  await requireProfile("teacher");
+  const { user } = await requireProfile("teacher");
   const supabase = createSupabaseServerClient();
   const [{ data }, { data: batchData }, { data: setData }] = await Promise.all([
     supabase
@@ -64,12 +65,22 @@ export default async function TeacherPapersPage({ searchParams }: PapersPageProp
           <h1 className="text-2xl font-semibold">Question papers</h1>
           <p className="script-note mt-0.5">Draft with AI or upload your own — then schedule a test.</p>
         </div>
-        <Button asChild>
-          <Link href="/teacher/papers/new">
-            <FilePlus2 className="h-4 w-4" aria-hidden="true" />
-            New paper
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {isPlatformOwner(user.email) ? (
+            <Button asChild variant="outline">
+              <Link href="/teacher/library">
+                <Library className="h-4 w-4" aria-hidden="true" />
+                Shared library
+              </Link>
+            </Button>
+          ) : null}
+          <Button asChild>
+            <Link href="/teacher/papers/new">
+              <FilePlus2 className="h-4 w-4" aria-hidden="true" />
+              New paper
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {searchParams?.error ? (

@@ -13,7 +13,7 @@ import {
   gradeSubjectiveAnswer,
   type DraftQuestion
 } from "@/lib/ai";
-import { devLoginCodesEnabled, optionalEnv } from "@/lib/env";
+import { devLoginCodesEnabled, isPlatformOwner, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
 import { normalizeForFingerprint, sanitizeSearchTerm, topicKey } from "@/lib/question-bank";
 import { loadCalibrationBlock } from "@/lib/calibration-source";
@@ -1046,28 +1046,43 @@ export async function savePaperToBankAction(formData: FormData) {
   redirect(`/teacher/papers?banked=${added}&of=${unique.length}`);
 }
 
+export type BankScope = "mine" | "library" | "all";
+
+export type BankSearchRow = DraftQuestion & {
+  source_label: string;
+  is_public: boolean;
+};
+
 export type BankSearchResult = {
   ok: boolean;
   message?: string;
-  questions?: DraftQuestion[];
+  questions?: BankSearchRow[];
 };
 
-// Searches the teacher's bank and returns rows already shaped as paper-builder drafts, so
-// the builder can append them with no translation step.
+// Searches the bank and returns rows already shaped as paper-builder drafts, so the builder
+// can append them with no translation step.
+//
+// Scope note: RLS is `owner_teacher_id = auth.uid() or is_public`, so "all" needs no filter —
+// a teacher sees their own rows plus the shared library and nothing else. The explicit
+// filters below only narrow that further for the UI toggle.
 export async function searchBankAction(formData: FormData): Promise<BankSearchResult> {
-  await requireRole("teacher");
+  const { user } = await requireRole("teacher");
   const supabase = createSupabaseServerClient();
   const term = sanitizeSearchTerm(readString(formData, "term"));
   const topic = readString(formData, "topic");
   const type = readString(formData, "question_type");
+  const scope = readString(formData, "scope") as BankScope;
 
   let query = supabase
     .from("bank_questions")
-    .select("question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric")
+    .select(
+      "question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric,source_label,is_public"
+    )
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // RLS already restricts this to the teacher's own rows; these are the user's filters.
+  if (scope === "mine") query = query.eq("owner_teacher_id", user.id);
+  if (scope === "library") query = query.eq("is_public", true);
   if (term) query = query.textSearch("search_vector", term, { type: "websearch" });
   if (topic) query = query.eq("topic_key", topicKey(topic));
   if (type === "mcq" || type === "subjective") query = query.eq("question_type", type);
@@ -1075,7 +1090,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   const { data, error } = await query;
   if (error) return { ok: false, message: error.message };
 
-  const questions: DraftQuestion[] = (data ?? []).map((row) => ({
+  const questions: BankSearchRow[] = (data ?? []).map((row) => ({
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
@@ -1085,10 +1100,96 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     correct_answer: row.correct_answer,
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),
-    rubric: row.rubric
+    rubric: row.rubric,
+    source_label: row.source_label,
+    is_public: row.is_public
   }));
 
   return { ok: true, questions };
+}
+
+export type LibraryPublishPayload = {
+  questions: DraftQuestion[];
+  sourceLabel: string;
+  subject: string;
+  difficulty: string;
+  defaultTopic: string;
+};
+
+// Publishes extracted questions into the SHARED library, visible to every teacher.
+//
+// Gated on an env allow-list rather than a role: this writes rows that every teacher on the
+// platform will see, so it must not be reachable by an ordinary teacher account.
+export async function publishToLibraryAction(payload: LibraryPublishPayload) {
+  const { user } = await requireRole("teacher");
+
+  if (!isPlatformOwner(user.email)) {
+    return { ok: false, message: "Only the platform owner can publish to the shared library." };
+  }
+
+  const admin = createSupabaseAdminClient();
+  const sourceLabel = payload.sourceLabel.trim();
+  if (!sourceLabel) return { ok: false, message: "Add a source label, e.g. 'JEE Main 2024 Shift 1'." };
+
+  const usable = payload.questions.filter((question) => question.question_text.trim());
+  if (usable.length === 0) return { ok: false, message: "Nothing to publish." };
+
+  const difficulty = ["easy", "medium", "hard"].includes(payload.difficulty)
+    ? payload.difficulty
+    : null;
+
+  const rows: Insert<"bank_questions">[] = [];
+  for (const question of usable) {
+    const options = question.question_type === "mcq" ? (question.options ?? []) : null;
+    // Mirrors bank_questions_mcq_shape — skip rather than fail the whole upload.
+    if (question.question_type === "mcq" && (!options || options.length < 2)) continue;
+
+    const maxMarks = Math.max(0.5, Number(question.max_marks) || 1);
+    rows.push({
+      owner_teacher_id: user.id,
+      question_text: question.question_text.trim(),
+      question_type: question.question_type,
+      topic: question.topic.trim() || payload.defaultTopic.trim() || "General",
+      subject: payload.subject.trim(),
+      options,
+      correct_answer: question.correct_answer,
+      max_marks: maxMarks,
+      negative_marks: Math.min(Math.max(Number(question.negative_marks) || 0, 0), maxMarks),
+      rubric: question.rubric,
+      source_label: sourceLabel,
+      difficulty,
+      is_public: true,
+      fingerprint: fingerprintQuestion({
+        questionText: question.question_text,
+        questionType: question.question_type,
+        options
+      })
+    });
+  }
+
+  const seen = new Set<string>();
+  const unique = rows.filter((row) => {
+    if (seen.has(row.fingerprint)) return false;
+    seen.add(row.fingerprint);
+    return true;
+  });
+
+  const { data, error } = await admin
+    .from("bank_questions")
+    .upsert(unique, { onConflict: "owner_teacher_id,fingerprint", ignoreDuplicates: true })
+    .select("id");
+
+  if (error) return { ok: false, message: error.message };
+
+  const added = data?.length ?? 0;
+  revalidatePath("/teacher/library");
+  return {
+    ok: true,
+    message:
+      added === unique.length
+        ? `Published ${added} question${added === 1 ? "" : "s"} to the shared library.`
+        : `Published ${added} of ${unique.length} — the rest were already in the library.`
+  };
 }
 
 export async function publishPracticeAction(formData: FormData) {
