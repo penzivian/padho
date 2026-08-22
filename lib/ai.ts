@@ -33,6 +33,11 @@ export type DraftQuestion = {
   negative_marks?: number;
   // Storage path of a diagram for this question. Never a URL — the app signs it per request.
   image_path?: string | null;
+  // Preview URL for the paper-builder UI only: a blob: URL for a crop the teacher just made,
+  // or a short-lived signed URL for a bank question's diagram. Deliberately NOT persisted —
+  // normalizeDraftQuestions builds its rows field by field and drops it. Never store a URL,
+  // or the diagram leaks to anyone holding the link, including before the test opens.
+  image_url?: string | null;
   rubric: string | null;
 };
 export type AiGradeSuggestion = z.infer<typeof gradeSchema>;

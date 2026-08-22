@@ -2,7 +2,25 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (diagram-based questions — images on questions, served by signed URL).
+**Last updated: 2026-08-22** (getting diagrams IN — crop from the uploaded PDF, thumbnails, figure warning).
+
+## Recent changes (2026-08-22 diagram capture, Stage 1)
+
+The 2026-07-28 pass built the plumbing to *serve* a diagram; there was still no way to **get one in** except cropping it out of the PDF in an external tool and clicking a file picker per question. On a 45-question paper with 20 figures that is 20 manual crops.
+
+- **Diagrams were being dropped silently, and that was the real bug.** `extractQuestionsLocally` reads the text layer only; the AI path attaches the PDF and asks for JSON, and Claude cannot return an image. So a figure-heavy paper extracted as "45/45 questions" with every figure gone, no warning anywhere — a teacher only found out when a student hit an unanswerable question.
+- **`lib/pdf-figures.ts` detects figures geometrically** and is pure + unit-tested. Body text runs at a near-constant line pitch, so an empty vertical band is a figure. **Do not swap this for `extractImages`** — it only sees embedded raster XObjects, and verification against a real generated physics paper found **0** of them for two diagrams that were vector paths. Most JEE figures are drawn, not photographed.
+  - **Two non-obvious things, both found by verifying against a real PDF rather than fixtures. Keep both.** (1) Interior labels ("4 ohm" printed inside the circuit) split one figure's empty space into two or three gaps, so adjacent bands separated by ≤2.5 lines are coalesced; without it a labelled circuit counts as three figures. (2) The pitch estimate is the **lower quartile, not the mean or median** — on a figure-dense page half the pitches *are* the gaps, which drags a median up until nothing clears its own threshold and the page reports nothing at all.
+  - Verified end-to-end through the real `unpdf` pipeline: 2 figures found on the diagram page, 0 false positives on the text-only page.
+- **`components/teacher/diagram-cropper.tsx` crops straight out of the paper the teacher already uploaded.** Drag a box, it attaches. **Rendering is deliberately client-side**: the File is already in the page, and server-side rasterising needs `@napi-rs/canvas` (~30MB native) against a Vercel Hobby function budget. pdfjs is behind a dynamic `import("unpdf")`, so `/teacher/papers/new` stayed at 106 kB first-load.
+  - Works on **scans and photos** too. Extraction still fails on those (no text layer), but cropping does not care — type the stem, crop the figure. That is currently the only path for a scanned PYQ.
+  - Canvas is filled white before render: figures are line art on transparency, and a webp crop of that comes out black.
+- **You can now see what you attached.** The builder rendered only a filename, so a mis-ordered attachment on a 20-figure paper was invisible until a student hit it. Now a thumbnail. `BankPicker` shows one too — `searchBankAction` signs the images of rows it has *already* returned through the RLS client, which is the usual visibility-gate-then-admin pattern and means no caller-supplied path is ever signed. That also fixes a real gap: a library question lives in the owner's storage folder, which another teacher's own storage policy cannot read.
+- **`DraftQuestion.image_url` is UI-only and must never be persisted.** `normalizeDraftQuestions` builds its rows field by field and drops it. Storing a URL would leak the diagram to anyone holding the link, including before the test opens — the whole point of `image_path`.
+
+Tests 99 → 113.
+
+**Deliberately not built (Stages 2/3), in order:** geometric auto-suggest of the crop rectangle (the bands above already locate them — the teacher would confirm rather than draw); then a vision pass that rasterizes each page and returns question text *plus* a diagram bounding box. **Stage 3 is the only thing that fixes scanned PYQs**, which is the shared library's real blocker, but it needs an Anthropic key (production is still mock mode) and must respect `enforceAiLimit`. Both depend on the crop UI above as their review surface — shipping either first would mean auto-crops with no way to correct them.
 
 ## Recent changes (2026-07-28 question diagrams)
 
@@ -325,6 +343,7 @@ corepack pnpm@10.14.0 build   # type-check + production build
 2. **Platform bring-up + design pass — DONE (2026-06-30).** Real Supabase project provisioned and migrated; auth hardened with a dev-only on-screen-code fallback and a Google Sign-In code path; key-free PDF extraction; full redesign; demo data seed script. See [Recent changes](#recent-changes-2026-06-30-platform-pass).
 3. **Production readiness — LARGELY DONE (deployed live 2026-07-19).** App is on Vercel with Brevo SMTP sending 6-digit codes, functions pinned to Mumbai, loading skeletons in place. Remaining before real onboarding: **custom domain + Brevo DKIM/SPF** (deliverability — top blocker), enable Vercel Speed Insights/Analytics + error monitoring, run `MANUAL_E2E.md` against the live URL, rotate setup secrets — then **put it in front of one real teacher**. See [Recent changes (2026-07-19)](#recent-changes-2026-07-19-deploy--performance).
 4. **Question-paper depth — IN PROGRESS.** Shipped: negative marking, question bank, shared library, per-question diagrams. **Next candidates, in rough value order:**
+   - **Diagram capture Stage 2/3** — auto-suggest the crop rectangle from the figure bands `lib/pdf-figures.ts` already finds; then vision-based page extraction returning text + bbox. Stage 3 is the only route that fixes scanned PYQs, and needs an Anthropic key.
    - **Option-level images** (four graphs as the four options) — common in JEE. Requires `options` to stop being `string[]`; touches six `typeof option === "string"` call sites plus `questions_mcq_shape`. Own change, real blast radius.
    - **LaTeX/MathJax rendering** — NTA renders formulas; we show plain text. JEE physics/chemistry will want it.
    - **Library content sourcing** — the shared library works but is empty. The blocker is content, not code: no NCERT/PYQ API exists, most downloadable past papers are scans (`unpdf` needs a text layer), and redistributing NCERT/NTA material at platform scale is a decision the owner must make knowingly. Seed 2–3 papers by hand first and see whether teachers reach for them before investing in ingestion.

@@ -147,6 +147,17 @@ export function BankPicker({ onAdd }: BankPickerProps) {
                 >
                   <div className="min-w-0">
                     <p className="line-clamp-2">{question.question_text}</p>
+                    {question.image_url ? (
+                      // A diagram question is unusable without its diagram, so show it here —
+                      // otherwise a teacher reuses the stem and never learns a figure was
+                      // attached. The URL is signed and short-lived; the path is never exposed.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={question.image_url}
+                        alt=""
+                        className="mt-2 max-h-24 w-auto rounded-md border bg-white object-contain"
+                      />
+                    ) : null}
                     <p className="script-note mt-1">
                       {question.topic} · {question.question_type === "mcq" ? "MCQ" : "Subjective"}{" "}
                       · {question.max_marks} marks

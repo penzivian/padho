@@ -15,7 +15,8 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, isPlatformOwner, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
-import { QUESTION_IMAGE_BUCKET } from "@/lib/question-images";
+import { describeFigureWarning } from "@/lib/pdf-figures";
+import { QUESTION_IMAGE_BUCKET, signQuestionImages } from "@/lib/question-images";
 import { normalizeForFingerprint, sanitizeSearchTerm, topicKey } from "@/lib/question-bank";
 import { loadCalibrationBlock } from "@/lib/calibration-source";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
@@ -36,6 +37,9 @@ export type DraftQuestionsState = ActionState<{
   questions: DraftQuestion[];
   fileUrl?: string;
   source: "uploaded" | "ai_generated";
+  // Set when the uploaded paper looks like it carries diagrams. Extraction reads text only,
+  // so without this a figure-heavy paper extracts "cleanly" and the figures are just gone.
+  figureWarning?: string;
 }>;
 
 export type DoubtState = ActionState<{ answer: string }>;
@@ -292,6 +296,21 @@ export async function generateDraftQuestionsAction(
   }
 }
 
+// Reads the uploaded PDF's text geometry to warn when a paper carries diagrams. Kept here
+// rather than in lib/pdf-figures.ts so that module stays pure and unit-testable, and so pdfjs
+// is never pulled into a client bundle. A failure here must never fail the extraction itself —
+// the questions are already parsed by this point.
+async function describeUploadedFigures(file: File): Promise<string | null> {
+  if (!file.type.includes("pdf")) return null;
+  try {
+    const { extractTextItems } = await import("unpdf");
+    const { items } = await extractTextItems(new Uint8Array(await file.arrayBuffer()));
+    return describeFigureWarning(items);
+  } catch {
+    return null;
+  }
+}
+
 export async function extractDraftQuestionsAction(
   _previous: DraftQuestionsState,
   formData: FormData
@@ -317,7 +336,16 @@ export async function extractDraftQuestionsAction(
 
     const questions = await extractQuestionsFromFile(fileValue);
     await recordAiUsage(user.id, user.id, "paper_extraction");
-    return { ok: true, message: "Draft ready", data: { questions, fileUrl, source: "uploaded" } };
+    return {
+      ok: true,
+      message: "Draft ready",
+      data: {
+        questions,
+        fileUrl,
+        source: "uploaded",
+        figureWarning: (await describeUploadedFigures(fileValue)) ?? undefined
+      }
+    };
   } catch (error) {
     return { ok: false, message: errorMessage(error) };
   }
@@ -1084,6 +1112,10 @@ export type BankScope = "mine" | "library" | "all";
 export type BankSearchRow = DraftQuestion & {
   source_label: string;
   is_public: boolean;
+  // Short-lived signed URL for the diagram, so the teacher can SEE what a bank question
+  // carries before reusing it. A library question lives in the owner's storage folder, which
+  // another teacher's own storage policy cannot read — signing is the only way through.
+  image_url: string | null;
 };
 
 export type BankSearchResult = {
@@ -1123,6 +1155,11 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   const { data, error } = await query;
   if (error) return { ok: false, message: error.message };
 
+  // Defense-in-depth, the same shape as everywhere else: the rows above came back through the
+  // RLS-respecting client, so the teacher has already been proven able to see them. Only then
+  // does signQuestionImages reach for the admin client. No caller-supplied path is ever signed.
+  const signedImages = await signQuestionImages((data ?? []).map((row) => row.image_path));
+
   const questions: BankSearchRow[] = (data ?? []).map((row) => ({
     question_text: row.question_text,
     question_type: row.question_type,
@@ -1135,6 +1172,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     negative_marks: Number(row.negative_marks),
     rubric: row.rubric,
     image_path: row.image_path,
+    image_url: row.image_path ? (signedImages.get(row.image_path) ?? null) : null,
     source_label: row.source_label,
     is_public: row.is_public
   }));
