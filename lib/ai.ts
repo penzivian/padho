@@ -31,6 +31,8 @@ export type DraftQuestion = {
   // Penalty magnitude for a wrong MCQ answer. Optional on the draft so extraction and the
   // AI path need not supply it; normalizeDraftQuestions defaults it to 0 before saving.
   negative_marks?: number;
+  // Storage path of a diagram for this question. Never a URL — the app signs it per request.
+  image_path?: string | null;
   rubric: string | null;
 };
 export type AiGradeSuggestion = z.infer<typeof gradeSchema>;

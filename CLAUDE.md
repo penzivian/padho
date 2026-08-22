@@ -2,7 +2,22 @@
 
 > This file is auto-loaded by Claude Code every session. It is the single source of truth for project context. Keep it updated as the project evolves — when a phase completes or a convention changes, edit this file, not your memory.
 
-**Last updated: 2026-07-28** (shared question library — owner-published questions every teacher can reuse).
+**Last updated: 2026-07-28** (diagram-based questions — images on questions, served by signed URL).
+
+## Recent changes (2026-07-28 question diagrams)
+
+MCQs in JEE/NEET are heavily diagram-based (circuit diagrams, ray diagrams, graphs to read) and the app could not show one at all: `questions` had no image column and `options` is a plain string array.
+
+- **`questions.image_path` / `bank_questions.image_path` store a storage PATH, never a URL** (migration `0010`, applied live). A stored public URL would leak a diagram to anyone with the link, including before the test opens.
+- **New private `question-images` bucket.** The existing `question-paper-uploads` bucket could not be reused: its policy is `(storage.foldername(name))[1] = auth.uid()`, so a teacher reads only their own folder and **a student can never read it**. The new bucket has teacher write/read/delete on their own folder and **deliberately no student read policy at all**.
+- **Students only ever get short-lived signed URLs**, minted in `lib/question-images.ts` with the admin client *after* the caller has already passed the gate that protects question text — `get_student_test_questions` for a live attempt, or submitted-and-test-over on the review page. 6h TTL for an attempt (outlasts a 3h paper), 1h for review. Verified: the raw object path returns HTTP 400 unauthenticated.
+- A missing or unsignable diagram never takes down the paper — `signQuestionImages` returns an empty map and the question renders as text.
+- The RPC return type changed again, so `get_student_test_questions` is dropped and recreated.
+- Diagrams are uploaded per question in the paper builder and flow through the bank and the shared library with the question.
+
+**Not built:** option-level images (four graphs as the four options). That needs `options` to stop being `string[]`, which touches six `typeof option === "string"` call sites plus the mcq_shape constraint — worth doing, but a separate change. LaTeX/MathJax for formulas is also absent; NTA renders it and JEE physics/chemistry will want it.
+
+## Recent changes (2026-07-28 shared question library — owner-published questions every teacher can reuse).
 
 ## Recent changes (2026-07-28 shared library)
 

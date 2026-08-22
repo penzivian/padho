@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
 import type { Json } from "@/types/database";
@@ -28,6 +29,7 @@ type AnswerRow = {
     max_marks: number;
     negative_marks: number;
     topic: string;
+    image_path: string | null;
   } | null;
 };
 
@@ -54,7 +56,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const { data: submission } = await admin
     .from("test_submissions")
     .select(
-      "id,status,submitted_at,profiles(full_name,phone),answers(id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,negative_marks,topic))"
+      "id,status,submitted_at,profiles(full_name,phone),answers(id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,negative_marks,topic,image_path))"
     )
     .eq("test_id", params.testId)
     .eq("student_id", params.studentId)
@@ -88,6 +90,9 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const awarded = answers.reduce((sum, answer) => sum + Number(answer.awarded_marks ?? 0), 0);
   const total = answers.reduce((sum, answer) => sum + Number(answer.questions?.max_marks ?? 0), 0);
   const attempted = answers.filter((answer) => answer.student_answer.trim()).length;
+  const signedImages = await signQuestionImages(
+    answers.map((answer) => answer.questions?.image_path)
+  );
 
   return (
     <main className="page-shell max-w-3xl">
@@ -145,6 +150,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
           // Only a keyed MCQ can be called right or wrong here; a keyless one or a written
           // answer is whatever the teacher awarded.
           const correct = isMcq && key ? given.toLowerCase() === key.toLowerCase() : null;
+          const imageUrl = question?.image_path ? signedImages.get(question.image_path) : null;
 
           return (
             <Card key={answer.id}>
@@ -171,6 +177,16 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
 
               <div className="grid gap-3">
                 <p className="text-sm">{question?.question_text}</p>
+
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed URL, expires.
+                  <img
+                    src={imageUrl}
+                    alt={`Diagram for question ${question?.position ?? ""}`}
+                    className="max-h-80 w-auto max-w-full rounded-lg border bg-white object-contain"
+                  />
+                ) : null}
+
 
                 {isMcq ? (
                   <div className="grid gap-2">

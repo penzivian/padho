@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { Json } from "@/types/database";
 
@@ -27,6 +28,7 @@ type AnswerRow = {
     max_marks: number;
     negative_marks: number;
     topic: string;
+    image_path: string | null;
   } | null;
 };
 
@@ -103,7 +105,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const { data: answerData } = await admin
     .from("answers")
     .select(
-      "id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,negative_marks,topic)"
+      "id,student_answer,marked_for_review,awarded_marks,teacher_feedback,questions(position,question_text,question_type,options,correct_answer,max_marks,negative_marks,topic,image_path)"
     )
     .eq("submission_id", submission.id);
 
@@ -122,6 +124,10 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
     );
   }).length;
   const awaitingTeacher = answers.some((answer) => answer.awarded_marks === null);
+  // Signed only after both gates above (own submitted attempt + test over).
+  const signedImages = await signQuestionImages(
+    answers.map((answer) => answer.questions?.image_path)
+  );
 
   return (
     <main className="page-shell max-w-3xl">
@@ -178,6 +184,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
           const key = question?.correct_answer?.trim() ?? "";
           const isMcq = question?.question_type === "mcq";
           const correct = isMcq && key ? given.toLowerCase() === key.toLowerCase() : null;
+          const imageUrl = question?.image_path ? signedImages.get(question.image_path) : null;
 
           return (
             <Card key={answer.id}>
@@ -204,6 +211,16 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
 
               <div className="grid gap-3">
                 <p className="text-sm">{question?.question_text}</p>
+
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed URL, expires.
+                  <img
+                    src={imageUrl}
+                    alt={`Diagram for question ${question?.position ?? ""}`}
+                    className="max-h-80 w-auto max-w-full rounded-lg border bg-white object-contain"
+                  />
+                ) : null}
+
 
                 {isMcq ? (
                   <div className="grid gap-2">

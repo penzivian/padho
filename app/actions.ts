@@ -15,6 +15,7 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, isPlatformOwner, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
+import { QUESTION_IMAGE_BUCKET } from "@/lib/question-images";
 import { normalizeForFingerprint, sanitizeSearchTerm, topicKey } from "@/lib/question-bank";
 import { loadCalibrationBlock } from "@/lib/calibration-source";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
@@ -322,6 +323,36 @@ export async function extractDraftQuestionsAction(
   }
 }
 
+export type QuestionImageState = { ok: boolean; message: string; path?: string };
+
+// Uploads one diagram for a question. Returns the storage PATH, never a URL — the app mints
+// a short-lived signed URL per request, after the viewer has passed the relevant gate.
+export async function uploadQuestionImageAction(formData: FormData): Promise<QuestionImageState> {
+  const { user } = await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const fileValue = formData.get("image");
+
+  if (!(fileValue instanceof File) || fileValue.size === 0) {
+    return { ok: false, message: "Choose an image first." };
+  }
+  if (!fileValue.type.startsWith("image/")) {
+    return { ok: false, message: "That file is not an image." };
+  }
+  if (fileValue.size > 5 * 1024 * 1024) {
+    return { ok: false, message: "Diagram must be under 5 MB." };
+  }
+
+  // Folder is the teacher's id, which is what the storage policy keys on.
+  const safeName = fileValue.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const path = `${user.id}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage
+    .from(QUESTION_IMAGE_BUCKET)
+    .upload(path, fileValue, { upsert: false });
+
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, message: "Diagram added.", path };
+}
+
 export async function savePaperAction(payload: {
   batchId: string;
   title: string;
@@ -365,7 +396,8 @@ export async function savePaperAction(payload: {
     correct_answer: question.correct_answer,
     max_marks: question.max_marks,
     negative_marks: question.negative_marks,
-    rubric: question.rubric
+    rubric: question.rubric,
+    image_path: question.image_path ?? null
   }));
 
   const { error: questionsError } = await supabase.from("questions").insert(rows);
@@ -985,7 +1017,7 @@ export async function savePaperToBankAction(formData: FormData) {
 
   const { data: questions } = await supabase
     .from("questions")
-    .select("question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric")
+    .select("question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric,image_path")
     .eq("question_paper_id", paperId)
     .order("position", { ascending: true });
 
@@ -1015,6 +1047,7 @@ export async function savePaperToBankAction(formData: FormData) {
       max_marks: question.max_marks,
       negative_marks: question.negative_marks,
       rubric: question.rubric,
+      image_path: question.image_path,
       source_label: paper.title,
       source_paper_id: paper.id,
       fingerprint: fingerprintQuestion({
@@ -1076,7 +1109,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   let query = supabase
     .from("bank_questions")
     .select(
-      "question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric,source_label,is_public"
+      "question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric,image_path,source_label,is_public"
     )
     .order("created_at", { ascending: false })
     .limit(50);
@@ -1101,6 +1134,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),
     rubric: row.rubric,
+    image_path: row.image_path,
     source_label: row.source_label,
     is_public: row.is_public
   }));
@@ -1156,6 +1190,7 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
       max_marks: maxMarks,
       negative_marks: Math.min(Math.max(Number(question.negative_marks) || 0, 0), maxMarks),
       rubric: question.rubric,
+      image_path: question.image_path ?? null,
       source_label: sourceLabel,
       difficulty,
       is_public: true,
@@ -1483,7 +1518,8 @@ function normalizeDraftQuestions(questions: DraftQuestion[]) {
       negative_marks:
         question.question_type === "mcq"
           ? Math.min(Math.max(Number(question.negative_marks) || 0, 0), maxMarks)
-          : 0
+          : 0,
+      image_path: question.image_path?.trim() || null
     };
   });
 }

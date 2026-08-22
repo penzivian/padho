@@ -107,6 +107,7 @@ export type Database = {
           negative_marks: number;
           rubric: string | null;
           position: number;
+          image_path: string | null;
           created_at: string;
         };
         Insert: {
@@ -121,6 +122,7 @@ export type Database = {
           negative_marks?: number;
           rubric?: string | null;
           position?: number;
+          image_path?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["questions"]["Insert"]>;
@@ -217,6 +219,7 @@ export type Database = {
           difficulty: string | null;
           is_public: boolean;
           fingerprint: string;
+          image_path: string | null;
           created_at: string;
         };
         Insert: {
@@ -236,6 +239,7 @@ export type Database = {
           difficulty?: string | null;
           is_public?: boolean;
           fingerprint: string;
+          image_path?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["bank_questions"]["Insert"]>;
@@ -302,6 +306,7 @@ export type Database = {
           options: Json | null;
           max_marks: number;
           negative_marks: number;
+          image_path: string | null;
         }[];
       };
     };

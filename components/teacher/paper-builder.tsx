@@ -8,6 +8,7 @@ import {
   extractDraftQuestionsAction,
   generateDraftQuestionsAction,
   savePaperAction,
+  uploadQuestionImageAction,
   type DraftQuestionsState
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -119,6 +120,15 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
         ? "Turned negative marking off for every MCQ."
         : `Set every MCQ to −${value} for a wrong answer.`
     );
+  }
+
+  async function uploadDiagram(index: number, file: File) {
+    const formData = new FormData();
+    formData.set("image", file);
+    setMessage("Uploading diagram…");
+    const result = await uploadQuestionImageAction(formData);
+    setMessage(result.message);
+    if (result.ok && result.path) updateQuestion(index, { image_path: result.path });
   }
 
   function addFromBank(incoming: DraftQuestion[]) {
@@ -426,6 +436,38 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
                   />
                 </FormField>
               </div>
+              <div className="grid gap-2 rounded-lg border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Diagram (optional)</p>
+                  {question.image_path ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateQuestion(index, { image_path: null })}
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+                {question.image_path ? (
+                  <p className="script-note break-all">Attached · {question.image_path.split("/").pop()}</p>
+                ) : (
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    aria-label={`Diagram for question ${index + 1}`}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadDiagram(index, file);
+                    }}
+                  />
+                )}
+                <p className="script-note">
+                  For circuit diagrams, graphs and figures. Shown to students with the question.
+                </p>
+              </div>
+
               {question.question_type === "mcq" ? (
                 <FormField htmlFor={`negative_${index}`} label="Negative marks (wrong answer)">
                   <Input

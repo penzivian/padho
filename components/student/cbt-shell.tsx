@@ -24,6 +24,9 @@ export type CbtQuestion = {
   options: Json | null;
   max_marks: number;
   negative_marks: number;
+  image_path: string | null;
+  // Signed server-side after the live-test gate; the raw path is never fetchable directly.
+  image_url?: string | null;
 };
 
 type CbtShellProps = {
@@ -210,6 +213,16 @@ export function CbtShell({
 
         <div className="grid gap-4">
           <p className="whitespace-pre-wrap">{current.question_text}</p>
+
+          {current.image_url ? (
+            // Signed URL that expires, not a stable remote host next/image can be configured for.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={current.image_url}
+              alt={`Diagram for question ${index + 1}`}
+              className="max-h-96 w-auto max-w-full rounded-lg border bg-white object-contain"
+            />
+          ) : null}
 
           {current.question_type === "mcq" ? (
             <div className="grid gap-2">

@@ -9,6 +9,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 type GradingPageProps = {
@@ -34,6 +35,7 @@ type SubmissionRow = {
       max_marks: number;
       negative_marks: number;
       rubric: string | null;
+      image_path: string | null;
       correct_answer: string | null;
     } | null;
   }[];
@@ -60,7 +62,7 @@ export default async function GradingPage({ params }: GradingPageProps) {
   const { data } = await admin
     .from("test_submissions")
     .select(
-      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(position,question_text,question_type,max_marks,negative_marks,rubric,correct_answer))"
+      "id,status,profiles(full_name,phone),answers(id,question_id,student_answer,ai_suggested_marks,awarded_marks,ai_feedback,teacher_feedback,questions(position,question_text,question_type,max_marks,negative_marks,rubric,correct_answer,image_path))"
     )
     .eq("test_id", params.testId)
     .not("submitted_at", "is", null)
@@ -74,6 +76,11 @@ export default async function GradingPage({ params }: GradingPageProps) {
       (a, b) => (a.questions?.position ?? 0) - (b.questions?.position ?? 0)
     )
   }));
+  const signedImages = await signQuestionImages(
+    submissions.flatMap((submission) =>
+      submission.answers.map((answer) => answer.questions?.image_path)
+    )
+  );
   const gradedCount = submissions.filter((submission) => submission.status === "graded").length;
   const reviewCount = submissions.length - gradedCount;
 
@@ -163,6 +170,14 @@ export default async function GradingPage({ params }: GradingPageProps) {
                     </div>
                     <div className="grid gap-3">
                       <p className="text-sm">{question?.question_text}</p>
+                      {question?.image_path && signedImages.get(question.image_path) ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- signed URL.
+                        <img
+                          src={signedImages.get(question.image_path)}
+                          alt={`Diagram for question ${index + 1}`}
+                          className="max-h-72 w-auto max-w-full rounded-lg border bg-white object-contain"
+                        />
+                      ) : null}
                       {question?.rubric ? (
                         <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">{question.rubric}</p>
                       ) : null}
