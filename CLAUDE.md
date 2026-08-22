@@ -17,8 +17,6 @@ MCQs in JEE/NEET are heavily diagram-based (circuit diagrams, ray diagrams, grap
 
 **Not built:** option-level images (four graphs as the four options). That needs `options` to stop being `string[]`, which touches six `typeof option === "string"` call sites plus the mcq_shape constraint — worth doing, but a separate change. LaTeX/MathJax for formulas is also absent; NTA renders it and JEE physics/chemistry will want it.
 
-## Recent changes (2026-07-28 shared question library — owner-published questions every teacher can reuse).
-
 ## Recent changes (2026-07-28 shared library)
 
 The question bank gains a **platform-owned corpus**: questions the owner publishes once, visible to every teacher. This is what the bank was designed for — `bank_questions` RLS has always been `owner_teacher_id = auth.uid() or is_public`, so the read path needed **no change at all**; a row flipped to `is_public` is immediately searchable by every teacher.
@@ -300,6 +298,16 @@ Round-2 audit follow-up (all verified: 40/40 tests, lint, build; visual pass in 
 - **Google Sign-In is wired but inactive** — needs OAuth credentials from Google Cloud Console pasted into Supabase Auth → Providers → Google. Until then the button shows a clean "provider not enabled" error.
 - **Email delivery uses Supabase's default mailer**, which only sends a link (no visible code) and is rate-limited; the "Magic Link or OTP" template can't be edited until custom SMTP is configured in the Supabase dashboard. Fine for local/demo use with `DEV_LOGIN_CODES`; needs custom SMTP + an edited template before onboarding real users.
 
+## Working agreements (learned the hard way — read before verifying anything)
+
+- **Verify against the live database, not just unit tests.** Several of the worst bugs here (scrambled question order, the 12:30 AM → 6:00 AM schedule, negative marks being clamped to 0) passed types and lint and were only caught by querying real rows. **Always delete verification data afterwards** and confirm zero orphans.
+- **Never impersonate a real user account.** `supratimdebshan@gmail.com` is the owner and fine to use; `adrisaha000@gmail.com` and the `sharma*` student accounts are real people. Use the `*.demo@padho.app` seed students, or create a synthetic account and delete it.
+- **`.env.local` points at PRODUCTION Supabase.** Anything scheduled or seeded locally reaches real students. Treat local dev as live.
+- **Do not run `pnpm build` while the dev server is running** — it clobbers `.next` and the running server starts throwing `Cannot find module './xxx.js'`. Fix: stop the preview, `rm -rf .next`, restart.
+- **The preview browser does not reliably deliver synthetic clicks** (`activeElement` stays `BODY`). Drive React through the DOM instead — native setter + `dispatchEvent(new Event('input', {bubbles:true}))`, then `.click()` on buttons. This exercises the real handlers but does **not** prove tap targets; say so rather than implying a click-through happened.
+- **Commit author must be `Supratim Deb <supratimdebshan@gmail.com>`** or Vercel Hobby refuses the deploy. Push uses a classic GitHub PAT with `repo` scope in the macOS keychain; a fine-grained token 403s on this repo unless explicitly granted Contents: read-write.
+- **Migrations:** applied via the Supabase MCP when it is up. If its Postgres connection fails auth (it did mid-session once), fall back to the dashboard SQL Editor at `https://supabase.com/dashboard/project/rimkfjivabguavmuddxo/sql/new` — the "destructive operation" warning is expected for DDL and is safe to accept for these migrations.
+
 ## Verification (run before considering any change done)
 
 macOS (current):
@@ -316,5 +324,9 @@ corepack pnpm@10.14.0 build   # type-check + production build
 1. **Hardening pass — DONE (2026-06-30).** Model string fixed, extraction made resilient, error/loading states tightened, scoring-pipeline + AI-mock tests added, `enforceAiLimit` cleaned up.
 2. **Platform bring-up + design pass — DONE (2026-06-30).** Real Supabase project provisioned and migrated; auth hardened with a dev-only on-screen-code fallback and a Google Sign-In code path; key-free PDF extraction; full redesign; demo data seed script. See [Recent changes](#recent-changes-2026-06-30-platform-pass).
 3. **Production readiness — LARGELY DONE (deployed live 2026-07-19).** App is on Vercel with Brevo SMTP sending 6-digit codes, functions pinned to Mumbai, loading skeletons in place. Remaining before real onboarding: **custom domain + Brevo DKIM/SPF** (deliverability — top blocker), enable Vercel Speed Insights/Analytics + error monitoring, run `MANUAL_E2E.md` against the live URL, rotate setup secrets — then **put it in front of one real teacher**. See [Recent changes (2026-07-19)](#recent-changes-2026-07-19-deploy--performance).
-4. **Phase 1** — student/parent polish, WhatsApp weekly reports, fee tracking, attendance (deferred features; only when chosen). Also queued: **WhatsApp Business API upgrade** (swap `wa.me` behind `buildResultMessage` when volume justifies it), **AI-coached practice feedback** (deliberately not built yet). *(Dark mode, the landing page at `/`, and Speed Insights/Analytics shipped 2026-07-22.)*
-5. **Phase 3 (later)** — public discovery layer, once 8–10 institutes have real activity in the platform.
+4. **Question-paper depth — IN PROGRESS.** Shipped: negative marking, question bank, shared library, per-question diagrams. **Next candidates, in rough value order:**
+   - **Option-level images** (four graphs as the four options) — common in JEE. Requires `options` to stop being `string[]`; touches six `typeof option === "string"` call sites plus `questions_mcq_shape`. Own change, real blast radius.
+   - **LaTeX/MathJax rendering** — NTA renders formulas; we show plain text. JEE physics/chemistry will want it.
+   - **Library content sourcing** — the shared library works but is empty. The blocker is content, not code: no NCERT/PYQ API exists, most downloadable past papers are scans (`unpdf` needs a text layer), and redistributing NCERT/NTA material at platform scale is a decision the owner must make knowingly. Seed 2–3 papers by hand first and see whether teachers reach for them before investing in ingestion.
+5. **Phase 1** — student/parent polish, WhatsApp weekly reports, fee tracking, attendance (deferred; only when chosen). Also queued: **WhatsApp Business API upgrade** (swap `wa.me` behind `buildResultMessage`), **AI-coached practice feedback**.
+6. **Phase 3 (later)** — public discovery layer, once 8–10 institutes have real activity in the platform.
