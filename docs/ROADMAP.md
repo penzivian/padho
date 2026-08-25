@@ -11,8 +11,10 @@ or Vercel Hobby refuses the deploy.
 
 ## Rules of engagement (read before doing anything)
 
-1. **One item per run.** Do the first item that is `todo` and not blocked. Finish it, then stop —
-   even with budget left. This is a deliberate token-pacing constraint, not a suggestion.
+1. **One item per run.** Do the first item that is `todo` and not blocked, **in file order** —
+   the sections are sequenced deliberately (S1 must land before B1; L3 must land before anyone
+   takes money). Finish it, then stop — even with budget left. This is a deliberate token-pacing
+   constraint, not a suggestion.
 2. **Read `CLAUDE.md` first**, especially "Working agreements" and "Non-negotiable guardrails".
    They override anything here.
 3. **Verify before claiming done:**
@@ -68,6 +70,18 @@ the browser renders pages to webp and posts the images to the server action.
 **D5 — `image_url` is UI-only, never persisted.** Applies to options exactly as it does to
 questions. Storing a URL leaks the diagram to anyone with the link, including before a test opens.
 
+**D6 — Stay on Next.js + Vercel + Supabase. Do not migrate to Astro or Cloudflare.** Evaluated
+2026-08-25 against the "micro tool site" stack (AstroJS + Cloudflare Pages). It solves the
+opposite problem: Astro wins on public, static, SEO-fed content pages by shipping zero JS, while
+almost every Padho route is authenticated, RLS-backed and dynamic — and the CBT shell, paper
+builder and cropper are stateful React that would become Astro's worst case (islands). Migrating
+also forfeits Server Actions, RSC and the middleware session refresh. Cloudflare's edge is
+*further* from Supabase `ap-south-1` than the `bom1` pin in `vercel.json`, which was the single
+biggest latency win the project has made. The one legitimate insight from that stack — that the
+public marketing surface is a different engineering problem from the app — is captured in
+sections S and L below, and Next handles it with a statically-generated route. Revisit only if a
+real content/blog operation appears, and then as a separate site on a subdomain, never a rewrite.
+
 ---
 
 ## Backlog
@@ -104,6 +118,25 @@ questions. Storing a URL leaks the diagram to anyone with the link, including be
   - Implement D3 and add a test proving two identical questions with different option images
     produce the **same** fingerprint.
 
+### S — Static public surface (do this **before** the landing rebuild)
+
+- [ ] **S1 · Make `/` static by moving the auth redirect into middleware** — `todo`
+  - Today **every route is `ƒ`** — dynamic, server-rendered per request. The only static asset in
+    the whole build is `manifest.webmanifest`. That includes `/`, the one page Google will ever
+    crawl: it calls `getCurrentProfile()` and waits on Supabase before it can paint, for every
+    anonymous visitor.
+  - `middleware.ts` already binds a Supabase client and calls `getUser()` on every request. Move
+    the logged-in redirect (`/` → `/{role}`, or `/onboarding` with no profile) there, so
+    `app/page.tsx` becomes a pure static page and renders as `○`.
+  - **Risk — take this seriously.** The auth-param forwarding at the top of `app/page.tsx`
+    (`?code=`, `?token_hash=`, `?error=`) exists because Supabase's redirect fallback lands on the
+    site root, and CLAUDE.md records a past round of auth-looping bugs here. Either move that
+    forwarding into middleware too, or keep `/` dynamic and stop — a fast landing page is not
+    worth breaking sign-in.
+  - **Acceptance:** `/` shows as `○` in the build output; a logged-out visitor sees the landing;
+    a logged-in teacher still lands on `/teacher`; **and the full email-code login flow is
+    exercised end to end** — request code, enter it, reach the dashboard.
+
 ### B — Landing page
 
 - [ ] **B1 · Rebuild the landing page** — `todo`
@@ -120,6 +153,28 @@ questions. Storing a URL leaks the diagram to anyone with the link, including be
   - Responsive pass at 360 / 768 / 1440, both themes, reduced-motion respected, copy tightened,
     real screenshots or honest placeholders (never fabricated numbers — O3 does that and it reads
     as theatre when the live counter disagrees).
+
+### L — SEO, error pages and legal (after the landing rebuild)
+
+- [ ] **L1 · `robots.ts` and `sitemap.ts`** — `todo`
+  - Neither exists, so nothing tells Google what not to index. Allow the public pages; disallow
+    `/teacher/`, `/student/`, `/profile/`, `/onboarding`, `/auth`. Sitemap lists only the public
+    routes. Use the App Router metadata files (`app/robots.ts`, `app/sitemap.ts`), matching the
+    existing `app/manifest.ts` pattern.
+
+- [ ] **L2 · Custom 404 and error boundaries** — `todo`
+  - `app/not-found.tsx`, `app/error.tsx`, `app/global-error.tsx` are all absent, so an unhandled
+    exception currently shows the stock Next page. The app has a loading skeleton on every route
+    and no error state — close the gap using `components/page-skeleton.tsx` for visual continuity.
+    Error pages must not leak stack traces to students.
+
+- [ ] **L3 · Legal pages: privacy, terms, contact, refund** — `todo`
+  - None exist. **This is a hard blocker on charging money:** Razorpay and every Indian payment
+    gateway require a privacy policy, terms, refund policy and a contact page before approving a
+    merchant account. Needed before the day-46 pricing step in the positioning plan, not after.
+  - Static routes under `app/(legal)/`, linked from the landing footer. Keep them honest and
+    specific — the app stores student names, phone numbers, answers and grades, and that is what
+    the privacy policy has to describe.
 
 ### C — Filling the global library (vision ingestion)
 
@@ -161,3 +216,6 @@ questions. Storing a URL leaks the diagram to anyone with the link, including be
 Newest last. One line per run: date · item · outcome.
 
 - 2026-08-25 · setup · Roadmap created; daily routine scheduled 09:00 IST. No code changes.
+- 2026-08-25 · setup · Added sections S (static landing) and L (SEO/errors/legal) after auditing
+  the public surface: every route builds as `ƒ`, and robots/sitemap/404/error/legal are all
+  absent. Recorded D6 — staying on Next+Vercel, not migrating to Astro/Cloudflare.
