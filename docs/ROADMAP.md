@@ -20,12 +20,16 @@ or Vercel Hobby refuses the deploy.
    corepack pnpm@10.14.0 test && corepack pnpm@10.14.0 lint && corepack pnpm@10.14.0 build
    ```
    All three must pass. Never mark an item `done` on a red run.
-4. **Migrations may be applied automatically** via the Supabase MCP — but **additive only**
+4. **Migrations.** Supratim has approved automatic application, **additive only**
    (`add column`, `create table`, `create policy`, `create index`, `create or replace function`).
    **Never** drop a column, drop a table, delete rows, or alter a constraint in a way that could
-   reject existing rows, without asking Supratim first. `.env.local` points at PRODUCTION with
-   real students. If the Supabase MCP is unavailable, commit the `.sql` file, add a line to
-   **Blocked on Supratim**, and continue with a non-migration item.
+   reject existing rows. `.env.local` points at PRODUCTION with real students.
+   **In practice the scheduled runs have no Supabase MCP** — Routines created from inside a CCR
+   session cannot carry connector grants, so the fired sessions start without `mcp__Supabase__*`.
+   So the real procedure is: write the `.sql`, commit it, add a line under **Blocked on
+   Supratim**, and carry on with a non-migration item. Check whether the tools exist before
+   assuming either way. This costs almost nothing today — decision D1 means the whole of section
+   A needs no migration at all, and section B needs none either.
 5. **Delete verification data.** If you seed rows to verify against the live DB, remove them and
    confirm zero orphans before finishing.
 6. **Never impersonate a real user.** `supratimdebshan@gmail.com` is the owner and fine.
@@ -144,7 +148,13 @@ questions. Storing a URL leaks the diagram to anyone with the link, including be
   environment**, or `/teacher/library` denies everyone (it fails closed by design). Unverified —
   the daily run cannot read Vercel env. *Confirm this before the library work in C matters.*
 - **`ANTHROPIC_API_KEY` not yet set in Vercel.** C1/C2 will be built dormant; they do nothing
-  until the key is present.
+  until the key is present. Supratim has said he will add one.
+- **The daily Routine has no Supabase MCP** (`trig_01HqCWBWP6gvYiagVDv3Br1m`, fires 09:00 IST).
+  Connector grants cannot be attached to a Routine created from inside a session. Nothing needs
+  a migration until section C, so this is not urgent. To fix it, Supratim can recreate the
+  Routine from the claude.ai Routines UI with the Supabase connector attached — or simply apply
+  any committed `.sql` by hand at
+  https://supabase.com/dashboard/project/rimkfjivabguavmuddxo/sql/new
 
 ## Progress log
 
