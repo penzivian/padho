@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git config:*)",
+      "Bash(git status:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git restore:*)",
+      "Bash(corepack pnpm@10.14.0 install:*)",
+      "Bash(corepack pnpm@10.14.0 test:*)",
+      "Bash(corepack pnpm@10.14.0 lint:*)",
+      "Bash(corepack pnpm@10.14.0 build:*)",
+      "Bash(corepack pnpm@10.14.0 exec:*)",
+      "Bash(node:*)",
+      "Bash(node --test:*)"
+    ]
+  }
+}
