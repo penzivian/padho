@@ -6,7 +6,8 @@ import {
   normalizeOptions,
   optionLabel,
   optionTexts,
-  signOptions
+  signOptions,
+  toStoredOptions
 } from "@/lib/options";
 
 describe("normalizeOptions", () => {
@@ -121,6 +122,28 @@ describe("signOptions", () => {
   it("renders as text when a diagram cannot be signed, rather than failing the paper", () => {
     assert.deepEqual(signOptions([{ text: "a", image_path: "uid/gone.webp" }], new Map()), [
       { text: "a", image_path: "uid/gone.webp", image_url: null }
+    ]);
+  });
+});
+
+describe("toStoredOptions", () => {
+  it("drops the UI-only image_url so a URL can never reach the database", () => {
+    assert.deepEqual(
+      toStoredOptions([
+        { text: "a", image_path: "uid/a.webp", image_url: "blob:whatever" },
+        { text: "b", image_path: null, image_url: null }
+      ]),
+      [
+        { text: "a", image_path: "uid/a.webp" },
+        { text: "b", image_path: null }
+      ]
+    );
+  });
+
+  it("fills the letter before saving, so correct_answer always has something to match", () => {
+    assert.deepEqual(toStoredOptions([{ image_path: "uid/a.webp" }, { image_path: "uid/b.webp" }]), [
+      { text: "A", image_path: "uid/a.webp" },
+      { text: "B", image_path: "uid/b.webp" }
     ]);
   });
 });

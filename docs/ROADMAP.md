@@ -106,7 +106,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
   - **Acceptance:** verify against the live DB that an option image renders for a student mid-test
     and that the raw storage path returns HTTP 400 unauthenticated. Delete the verification data.
 
-- [ ] **A3 · Builder UI for option diagrams** — `todo`
+- [x] **A3 · Builder UI for option diagrams** — `done`
   - Per-option diagram slot in `components/teacher/paper-builder.tsx`, reusing `DiagramCropper`.
     Thumbnail after attach, remove button, D2's letter auto-fill.
   - **Acceptance:** crop from an uploaded PDF onto option B, save, reopen — image persists,
@@ -231,3 +231,11 @@ Newest last. One line per run: date · item · outcome.
   client never handles a storage path. Grading page needed no change: it does not select
   `options`. 123 → 126 tests, green. **Live-DB verification still outstanding** (needs a seeded
   option-image question) — do it as part of A3 once the builder can create one.
+- 2026-08-26 · A3 · done. `DraftQuestion.options` is now `DraftOption[]`, and the builder's
+  one-option-per-line textarea became per-option rows with their own crop slot. Ripple was
+  wider than the six read sites: extraction and the AI mock both emit strings and are
+  normalized at the boundary; `toStoredOptions` strips the UI-only `image_url` so a URL can
+  never reach the column; the bank fingerprint takes `optionTexts` (D3). **`questionListSchema`
+  is deliberately NOT the draft shape** — it validates the JSON Claude returns over the wire,
+  where options are strings, and `tests/ai.test.ts` no longer round-trips drafts through it.
+  126 → 128 tests, green. Live-DB verification for A2+A3 still outstanding.

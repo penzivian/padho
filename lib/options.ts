@@ -55,6 +55,18 @@ export function normalizeOptions(raw: unknown): QuestionOption[] {
   return options;
 }
 
+// An option while it is being edited in the paper builder. `image_url` is a blob: URL for a
+// crop the teacher just made, or a signed URL for one that came from the bank — UI only, and
+// `toStoredOptions` drops it. Persisting a URL would leak the diagram to anyone holding the
+// link, including before the test opens, which is the whole reason `image_path` exists.
+export type DraftOption = QuestionOption & { image_url?: string | null };
+
+// The exact shape written to the `options` jsonb column: normalized, letter-filled, and with
+// every UI-only field stripped.
+export function toStoredOptions(raw: unknown): QuestionOption[] {
+  return normalizeOptions(raw).map(({ text, image_path }) => ({ text, image_path }));
+}
+
 // The plain strings, for everything that still works in text: matching `correct_answer`,
 // applying a pasted answer key, and the bank fingerprint (which must ignore images entirely,
 // so that the same question re-cropped still dedupes to one row).

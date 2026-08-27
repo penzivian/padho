@@ -25,7 +25,7 @@ import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { generateInviteCode, normalizePhone } from "@/lib/utils";
-import { optionTexts } from "@/lib/options";
+import { normalizeOptions, optionTexts, toStoredOptions } from "@/lib/options";
 import type { Insert, Row } from "@/types/database";
 
 type ActionState<T = null> = {
@@ -1079,7 +1079,8 @@ export async function savePaperToBankAction(formData: FormData) {
       fingerprint: fingerprintQuestion({
         questionText: question.question_text,
         questionType: question.question_type,
-        options
+        // Text only — D3. The same question re-cropped must still dedupe to one row.
+        options: optionTexts(options)
       })
     });
   }
@@ -1162,7 +1163,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
-    options: row.question_type === "mcq" ? optionTexts(row.options) : null,
+    options: row.question_type === "mcq" ? normalizeOptions(row.options) : null,
     correct_answer: row.correct_answer,
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),
@@ -1231,7 +1232,8 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
       fingerprint: fingerprintQuestion({
         questionText: question.question_text,
         questionType: question.question_type,
-        options
+        // Text only — D3. The same question re-cropped must still dedupe to one row.
+        options: optionTexts(options)
       })
     });
   }
@@ -1543,7 +1545,7 @@ function normalizeDraftQuestions(questions: DraftQuestion[]) {
       return {
       ...question,
       topic: question.topic.trim() || "General",
-      options: question.question_type === "mcq" ? question.options ?? [] : null,
+      options: question.question_type === "mcq" ? toStoredOptions(question.options) : null,
       correct_answer: question.question_type === "mcq" ? question.correct_answer : null,
       rubric: question.question_type === "subjective" ? question.rubric : null,
       max_marks: maxMarks,

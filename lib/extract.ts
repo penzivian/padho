@@ -110,7 +110,7 @@ function toDraftQuestion(rawBlock: string, answerLetter?: string): DraftQuestion
       question_text: questionText,
       question_type: "mcq",
       topic: "General",
-      options: options.map((option) => option.text),
+      options: options.map((option) => ({ text: option.text, image_path: null })),
       correct_answer: correct,
       max_marks: 1,
       rubric: null
@@ -193,6 +193,6 @@ export function applyAnswerKey(questions: DraftQuestion[], keyText: string): Dra
     if (!letter || question.question_type !== "mcq" || !question.options) return question;
     const optionIndex = letterIndex(letter);
     if (optionIndex < 0 || optionIndex >= question.options.length) return question;
-    return { ...question, correct_answer: question.options[optionIndex] };
+    return { ...question, correct_answer: question.options[optionIndex].text };
   });
 }

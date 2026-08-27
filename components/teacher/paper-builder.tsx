@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { DraftQuestion } from "@/lib/ai";
+import { optionLabel, type DraftOption } from "@/lib/options";
 import { applyAnswerKey } from "@/lib/extract";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +54,11 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
   // Nothing is re-uploaded: this is the same File the extract form posted.
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [figureWarning, setFigureWarning] = useState("");
-  const [croppingIndex, setCroppingIndex] = useState<number | null>(null);
+  // Which slot the cropper is filling: a question's own diagram (option === null) or
+  // one answer option's.
+  const [cropTarget, setCropTarget] = useState<{ question: number; option: number | null } | null>(
+    null
+  );
 
   useEffect(() => {
     if (generateState.data) {
@@ -89,7 +94,12 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
         question_text: "",
         question_type: "mcq",
         topic: "General",
-        options: ["", "", "", ""],
+        options: [
+          { text: "", image_path: null },
+          { text: "", image_path: null },
+          { text: "", image_path: null },
+          { text: "", image_path: null }
+        ],
         correct_answer: "",
         max_marks: 1,
         negative_marks: 0,
@@ -154,10 +164,39 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
   }
 
   // A crop is just an upload whose file the teacher never had to make by hand.
-  async function attachCrop(index: number, blob: Blob) {
-    const file = new File([blob], `q${index + 1}-diagram.webp`, { type: blob.type });
-    await uploadDiagram(index, file);
-    setCroppingIndex(null);
+  async function attachCrop(target: { question: number; option: number | null }, blob: Blob) {
+    const suffix = target.option === null ? "diagram" : `option-${optionLabel(target.option)}`;
+    const file = new File([blob], `q${target.question + 1}-${suffix}.webp`, { type: blob.type });
+    if (target.option === null) await uploadDiagram(target.question, file);
+    else await uploadOptionDiagram(target.question, target.option, file);
+    setCropTarget(null);
+  }
+
+  function updateOption(questionIndex: number, optionIndex: number, patch: Partial<DraftOption>) {
+    const options = questions[questionIndex]?.options ?? [];
+    updateQuestion(questionIndex, {
+      options: options.map((option, i) => (i === optionIndex ? { ...option, ...patch } : option))
+    });
+  }
+
+  async function uploadOptionDiagram(questionIndex: number, optionIndex: number, file: File) {
+    const formData = new FormData();
+    formData.set("image", file);
+    setMessage("Uploading option diagram…");
+    const result = await uploadQuestionImageAction(formData);
+    setMessage(result.message);
+    if (!result.ok || !result.path) return;
+
+    releasePreview(questions[questionIndex]?.options?.[optionIndex]?.image_url);
+    updateOption(questionIndex, optionIndex, {
+      image_path: result.path,
+      image_url: URL.createObjectURL(file)
+    });
+  }
+
+  function clearOptionDiagram(questionIndex: number, optionIndex: number) {
+    releasePreview(questions[questionIndex]?.options?.[optionIndex]?.image_url);
+    updateOption(questionIndex, optionIndex, { image_path: null, image_url: null });
   }
 
   function addFromBank(incoming: DraftQuestion[]) {
@@ -509,7 +548,7 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
                         type="button"
                         size="sm"
                         variant="secondary"
-                        onClick={() => setCroppingIndex(index)}
+                        onClick={() => setCropTarget({ question: index, option: null })}
                       >
                         <Crop className="h-4 w-4" aria-hidden="true" />
                         Crop from {sourceFile.type.includes("pdf") ? "PDF" : "image"}
@@ -554,17 +593,92 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
               ) : null}
               {question.question_type === "mcq" ? (
                 <>
-                  <FormField htmlFor={`options_${index}`} label="Options (one per line)">
-                    <Textarea
-                      id={`options_${index}`}
-                      value={(question.options ?? []).join("\n")}
-                      onChange={(event) =>
+                  <div className="grid gap-2">
+                    <p className="text-sm font-medium">Options</p>
+                    {(question.options ?? []).map((option, optionIndex) => (
+                      <div key={optionIndex} className="grid gap-2 rounded-lg border p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-sm font-semibold">
+                            {optionLabel(optionIndex)}
+                          </span>
+                          <Input
+                            aria-label={`Option ${optionLabel(optionIndex)} for question ${index + 1}`}
+                            value={option.text}
+                            placeholder={option.image_path ? "Diagram only" : "Option text"}
+                            onChange={(event) =>
+                              updateOption(index, optionIndex, { text: event.target.value })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Remove option ${optionLabel(optionIndex)}`}
+                            onClick={() => {
+                              releasePreview(option.image_url);
+                              updateQuestion(index, {
+                                options: (question.options ?? []).filter((_, i) => i !== optionIndex)
+                              });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+
+                        {option.image_path ? (
+                          <div className="flex items-start gap-2">
+                            {option.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={option.image_url}
+                                alt={`Diagram on option ${optionLabel(optionIndex)}`}
+                                className="max-h-28 w-auto rounded-md border bg-white object-contain"
+                              />
+                            ) : (
+                              <p className="script-note break-all">Diagram attached</p>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => clearOptionDiagram(index, optionIndex)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ) : sourceFile ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="justify-self-start"
+                            onClick={() => setCropTarget({ question: index, option: optionIndex })}
+                          >
+                            <Crop className="h-4 w-4" aria-hidden="true" />
+                            Crop a diagram for {optionLabel(optionIndex)}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="justify-self-start"
+                      onClick={() =>
                         updateQuestion(index, {
-                          options: event.target.value.split("\n").filter(Boolean)
+                          options: [...(question.options ?? []), { text: "", image_path: null }]
                         })
                       }
-                    />
-                  </FormField>
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      Add option
+                    </Button>
+                    <p className="script-note">
+                      For graph or figure answers, crop a diagram onto the option. An option with
+                      only a diagram is labelled by its letter.
+                    </p>
+                  </div>
                   <FormField htmlFor={`answer_${index}`} label="Correct answer">
                     <Input
                       id={`answer_${index}`}
@@ -598,12 +712,12 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
         </div>
       </section>
 
-      {sourceFile && croppingIndex !== null ? (
+      {sourceFile && cropTarget ? (
         <DiagramCropper
           file={sourceFile}
-          questionNumber={croppingIndex + 1}
-          onCropped={(blob) => attachCrop(croppingIndex, blob)}
-          onClose={() => setCroppingIndex(null)}
+          questionNumber={cropTarget.question + 1}
+          onCropped={(blob) => attachCrop(cropTarget, blob)}
+          onClose={() => setCropTarget(null)}
         />
       ) : null}
     </div>
