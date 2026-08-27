@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { normalizeOptions, optionLabel, optionTexts } from "@/lib/options";
+import {
+  collectOptionImagePaths,
+  normalizeOptions,
+  optionLabel,
+  optionTexts,
+  signOptions
+} from "@/lib/options";
 
 describe("normalizeOptions", () => {
   it("reads the legacy string[] shape every saved paper uses", () => {
@@ -87,5 +93,34 @@ describe("optionTexts", () => {
 describe("optionLabel", () => {
   it("numbers options the way a paper prints them", () => {
     assert.deepEqual([0, 1, 2, 3].map(optionLabel), ["A", "B", "C", "D"]);
+  });
+});
+
+describe("collectOptionImagePaths", () => {
+  it("gathers every option image across a paper for one signing call", () => {
+    assert.deepEqual(
+      collectOptionImagePaths([
+        ["plain", "text"],
+        [{ text: "a", image_path: "uid/a.webp" }, { text: "b", image_path: "uid/b.webp" }],
+        null
+      ]),
+      [null, null, "uid/a.webp", "uid/b.webp"]
+    );
+  });
+});
+
+describe("signOptions", () => {
+  it("attaches a signed URL to each option that has a diagram", () => {
+    const signed = new Map([["uid/a.webp", "https://signed/a"]]);
+    assert.deepEqual(signOptions([{ text: "a", image_path: "uid/a.webp" }, "b"], signed), [
+      { text: "a", image_path: "uid/a.webp", image_url: "https://signed/a" },
+      { text: "b", image_path: null, image_url: null }
+    ]);
+  });
+
+  it("renders as text when a diagram cannot be signed, rather than failing the paper", () => {
+    assert.deepEqual(signOptions([{ text: "a", image_path: "uid/gone.webp" }], new Map()), [
+      { text: "a", image_path: "uid/gone.webp", image_url: null }
+    ]);
   });
 });

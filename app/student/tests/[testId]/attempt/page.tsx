@@ -5,6 +5,7 @@ import { CbtShell, type CbtQuestion } from "@/components/student/cbt-shell";
 import { Card } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth";
 import type { AttemptAnswer } from "@/lib/attempt";
+import { collectOptionImagePaths, signOptions } from "@/lib/options";
 import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -62,12 +63,17 @@ export default async function AttemptPage({ params }: AttemptPageProps) {
   // Signed only now — the RPC above already enforced is_test_student + is_test_live, so this
   // is the privileged step that check earns.
   const signed = await signQuestionImages(
-    rawQuestions.map((question) => question.image_path),
+    [
+      ...rawQuestions.map((question) => question.image_path),
+      ...collectOptionImagePaths(rawQuestions.map((question) => question.options))
+    ],
     "attempt"
   );
   const questions = rawQuestions.map((question) => ({
     ...question,
-    image_url: question.image_path ? (signed.get(question.image_path) ?? null) : null
+    image_url: question.image_path ? (signed.get(question.image_path) ?? null) : null,
+    // Resolved server-side so the client never handles a raw storage path.
+    options: signOptions(question.options, signed)
   }));
   const initialAnswers: AttemptAnswer[] = (answerData ?? []).map((row) => ({
     questionId: row.question_id,

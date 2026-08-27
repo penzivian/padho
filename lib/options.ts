@@ -61,3 +61,22 @@ export function normalizeOptions(raw: unknown): QuestionOption[] {
 export function optionTexts(raw: unknown): string[] {
   return normalizeOptions(raw).map((option) => option.text);
 }
+
+// An option resolved for rendering: the stored path plus a short-lived signed URL, minted the
+// same way question diagrams are — server-side, only after the caller has passed the gate that
+// protects question text. The raw path is never fetchable directly.
+export type SignedQuestionOption = QuestionOption & { image_url: string | null };
+
+// Every option image path across a set of questions, for one batched signing call.
+export function collectOptionImagePaths(rawOptions: unknown[]): (string | null)[] {
+  return rawOptions.flatMap((raw) => normalizeOptions(raw).map((option) => option.image_path));
+}
+
+// A missing or unsignable option diagram must never take down the paper — it renders as text,
+// exactly as signQuestionImages does for the question-level image.
+export function signOptions(raw: unknown, signed: Map<string, string>): SignedQuestionOption[] {
+  return normalizeOptions(raw).map((option) => ({
+    ...option,
+    image_url: option.image_path ? (signed.get(option.image_path) ?? null) : null
+  }));
+}

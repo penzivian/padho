@@ -7,7 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { normalizeOptions, optionLabel } from "@/lib/options";
+import { collectOptionImagePaths, optionLabel, signOptions } from "@/lib/options";
 import type { Json } from "@/types/database";
 
 type ResponsesPageProps = {
@@ -127,7 +127,10 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const awaitingTeacher = answers.some((answer) => answer.awarded_marks === null);
   // Signed only after both gates above (own submitted attempt + test over).
   const signedImages = await signQuestionImages(
-    answers.map((answer) => answer.questions?.image_path)
+    [
+      ...answers.map((answer) => answer.questions?.image_path),
+      ...collectOptionImagePaths(answers.map((answer) => answer.questions?.options))
+    ]
   );
 
   return (
@@ -178,7 +181,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
       <div className="grid gap-4">
         {answers.map((answer) => {
           const question = answer.questions;
-          const options = normalizeOptions(question?.options);
+          const options = signOptions(question?.options, signedImages);
           const given = answer.student_answer.trim();
           const key = question?.correct_answer?.trim() ?? "";
           const isMcq = question?.question_type === "mcq";
@@ -240,7 +243,19 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-xs font-semibold">
                             {optionLabel(optionIndex)}
                           </span>
-                          <span className="flex-1">{option.text}</span>
+                          {option.image_url ? (
+                            <span className="flex flex-1 flex-col gap-1.5">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={option.image_url}
+                                alt={`Option ${optionLabel(optionIndex)}`}
+                                className="max-h-32 w-auto rounded-md border bg-white object-contain"
+                              />
+                              <span>{option.text}</span>
+                            </span>
+                          ) : (
+                            <span className="flex-1">{option.text}</span>
+                          )}
                           {chosen ? (
                             <span className="text-xs text-muted-foreground">your answer</span>
                           ) : null}

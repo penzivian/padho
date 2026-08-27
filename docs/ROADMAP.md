@@ -99,7 +99,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
   - **Acceptance:** behaviour identical for existing string papers; tests/lint/build green.
     No UI change in this item.
 
-- [ ] **A2 · Serve option images** — `todo`
+- [x] **A2 · Serve option images** — `done`
   - Collect option `image_path`s into the existing `signQuestionImages` calls on the attempt page,
     both responses pages and the grading page. Render the image inside each option.
   - `get_student_test_questions` already returns `options` as jsonb — no RPC change needed.
@@ -225,3 +225,9 @@ Newest last. One line per run: date · item · outcome.
   switched to Opus 5; prompt now pushes an `in-progress` claim as a tripwire before building.
 - 2026-08-26 · A1 · done. `lib/options.ts` + 10 tests; all six `typeof option === "string"` sites
   now go through it. Behaviour unchanged for existing string papers. 113 → 123 tests, green.
+- 2026-08-26 · A2 · done. Option diagrams now render on the live attempt and both review pages.
+  Option image paths ride along in the existing `signQuestionImages` call, so there is no extra
+  round-trip. `CbtQuestion.options` is now `SignedQuestionOption[]` rather than raw `Json` — the
+  client never handles a storage path. Grading page needed no change: it does not select
+  `options`. 123 → 126 tests, green. **Live-DB verification still outstanding** (needs a seeded
+  option-image question) — do it as part of A3 once the builder can create one.
