@@ -7,6 +7,7 @@ import {
   sanitizeSearchTerm,
   topicKey
 } from "@/lib/question-bank";
+import { optionTexts } from "@/lib/options";
 
 const mcq = (questionText: string, options: string[] | null = null) => ({
   questionText,
@@ -102,5 +103,45 @@ describe("bank search term", () => {
 
   it("collapses noise around real terms", () => {
     assert.equal(sanitizeSearchTerm("  kinematics!!   graphs  "), "kinematics graphs");
+  });
+});
+
+describe("fingerprint ignores option diagrams (D3)", () => {
+  it("dedupes the same question re-extracted with different crops", () => {
+    // The bank stores option TEXT in the fingerprint and never the image. Re-importing the same
+    // paper from a different PDF produces differently-cropped diagrams; if those entered the
+    // hash, every re-import would create duplicate rows.
+    const withoutImages = normalizeForFingerprint({
+      questionText: "Which graph shows uniform acceleration?",
+      questionType: "mcq",
+      options: optionTexts(["A", "B", "C", "D"])
+    });
+    const withImages = normalizeForFingerprint({
+      questionText: "Which graph shows uniform acceleration?",
+      questionType: "mcq",
+      options: optionTexts([
+        { text: "A", image_path: "uid/crop-1-a.webp" },
+        { text: "B", image_path: "uid/crop-1-b.webp" },
+        { text: "C", image_path: "uid/crop-1-c.webp" },
+        { text: "D", image_path: "uid/crop-1-d.webp" }
+      ])
+    });
+
+    assert.equal(withImages, withoutImages);
+  });
+
+  it("still separates two questions that share a stem but differ in options", () => {
+    const a = normalizeForFingerprint({
+      questionText: "Which of the following is correct?",
+      questionType: "mcq",
+      options: optionTexts([{ text: "Only I", image_path: "uid/a.webp" }, { text: "Only II" }])
+    });
+    const b = normalizeForFingerprint({
+      questionText: "Which of the following is correct?",
+      questionType: "mcq",
+      options: optionTexts([{ text: "Only III", image_path: "uid/a.webp" }, { text: "Only IV" }])
+    });
+
+    assert.notEqual(a, b);
   });
 });

@@ -10,6 +10,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { DraftQuestion } from "@/lib/ai";
+import { optionLabel } from "@/lib/options";
 
 type BankPickerProps = {
   onAdd: (questions: DraftQuestion[]) => void;
@@ -157,6 +158,21 @@ export function BankPicker({ onAdd }: BankPickerProps) {
                         alt=""
                         className="mt-2 max-h-24 w-auto rounded-md border bg-white object-contain"
                       />
+                    ) : null}
+                    {(question.options ?? []).some((option) => option.image_url) ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(question.options ?? []).map((option, optionIndex) =>
+                          option.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              key={optionIndex}
+                              src={option.image_url}
+                              alt={`Option ${optionLabel(optionIndex)}`}
+                              className="max-h-16 w-auto rounded-md border bg-white object-contain"
+                            />
+                          ) : null
+                        )}
+                      </div>
                     ) : null}
                     <p className="script-note mt-1">
                       {question.topic} · {question.question_type === "mcq" ? "MCQ" : "Subjective"}{" "}

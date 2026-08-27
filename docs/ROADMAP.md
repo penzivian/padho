@@ -112,7 +112,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
   - **Acceptance:** crop from an uploaded PDF onto option B, save, reopen — image persists,
     `image_url` never reaches the database.
 
-- [ ] **A4 · Bank and shared library carry option images** — `todo`
+- [x] **A4 · Bank and shared library carry option images** — `done`
   - `savePaperToBankAction`, `searchBankAction`, `BankPicker` copy option images through.
     Sign them in the picker the same way question images are signed (RLS read first, then admin).
   - Implement D3 and add a test proving two identical questions with different option images
@@ -239,3 +239,11 @@ Newest last. One line per run: date · item · outcome.
   is deliberately NOT the draft shape** — it validates the JSON Claude returns over the wire,
   where options are strings, and `tests/ai.test.ts` no longer round-trips drafts through it.
   126 → 128 tests, green. Live-DB verification for A2+A3 still outstanding.
+- 2026-08-26 · A4 · done. Option diagrams now survive the round-trip into the bank and the shared
+  library, and `BankPicker` shows them. **Found and fixed a leak:** `publishToLibraryAction` wrote
+  draft options straight through, so a `blob:` or signed `image_url` would have been persisted
+  into the PUBLIC library column — `savePaperAction` was already safe because it builds its
+  insert field by field, but options are passed whole. Both paths now go through
+  `toStoredOptions`. D3 has a regression test: the same question re-cropped fingerprints
+  identically, while two questions sharing a stem still separate. 128 → 130 tests, green.
+  Section A complete.

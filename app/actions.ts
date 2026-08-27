@@ -25,7 +25,12 @@ import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { generateInviteCode, normalizePhone } from "@/lib/utils";
-import { normalizeOptions, optionTexts, toStoredOptions } from "@/lib/options";
+import {
+  collectOptionImagePaths,
+  optionTexts,
+  signOptions,
+  toStoredOptions
+} from "@/lib/options";
 import type { Insert, Row } from "@/types/database";
 
 type ActionState<T = null> = {
@@ -1055,8 +1060,9 @@ export async function savePaperToBankAction(formData: FormData) {
 
   const rows: Insert<"bank_questions">[] = [];
   for (const question of questions) {
-    // Text only for now: A4 carries option diagrams through to the bank.
-    const options = question.question_type === "mcq" ? optionTexts(question.options) : null;
+    // Diagrams ride along with the option they belong to. toStoredOptions drops the UI-only
+    // image_url, so no URL can reach the column.
+    const options = question.question_type === "mcq" ? toStoredOptions(question.options) : null;
 
     // The bank mirrors questions_mcq_shape; an MCQ with fewer than two options would be
     // rejected by the check constraint, so skip rather than fail the whole import.
@@ -1157,13 +1163,19 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   // Defense-in-depth, the same shape as everywhere else: the rows above came back through the
   // RLS-respecting client, so the teacher has already been proven able to see them. Only then
   // does signQuestionImages reach for the admin client. No caller-supplied path is ever signed.
-  const signedImages = await signQuestionImages((data ?? []).map((row) => row.image_path));
+  const signedImages = await signQuestionImages([
+    ...(data ?? []).map((row) => row.image_path),
+    ...collectOptionImagePaths((data ?? []).map((row) => row.options))
+  ]);
 
   const questions: BankSearchRow[] = (data ?? []).map((row) => ({
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
-    options: row.question_type === "mcq" ? normalizeOptions(row.options) : null,
+    // Signed so the picker can show what an option carries, and so a question copied into the
+    // builder keeps its thumbnails. A library question lives in the owner's storage folder,
+    // which another teacher's own storage policy cannot read — signing is the only way through.
+    options: row.question_type === "mcq" ? signOptions(row.options, signedImages) : null,
     correct_answer: row.correct_answer,
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),
@@ -1209,7 +1221,7 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
 
   const rows: Insert<"bank_questions">[] = [];
   for (const question of usable) {
-    const options = question.question_type === "mcq" ? (question.options ?? []) : null;
+    const options = question.question_type === "mcq" ? toStoredOptions(question.options) : null;
     // Mirrors bank_questions_mcq_shape — skip rather than fail the whole upload.
     if (question.question_type === "mcq" && (!options || options.length < 2)) continue;
 
