@@ -15,6 +15,7 @@ import {
   type QuestionState
 } from "@/lib/attempt";
 import type { Json } from "@/types/database";
+import { normalizeOptions, optionLabel } from "@/lib/options";
 
 export type CbtQuestion = {
   id: string;
@@ -137,9 +138,7 @@ export function CbtShell({
     );
   }
 
-  const options = Array.isArray(current.options)
-    ? current.options.filter((option): option is string => typeof option === "string")
-    : [];
+  const options = normalizeOptions(current.options);
   const marked = answers.get(current.id)?.markedForReview ?? false;
   const lastQuestion = index === questions.length - 1;
   const minutesLeft = Math.floor(msLeft / 60_000);
@@ -228,21 +227,21 @@ export function CbtShell({
             <div className="grid gap-2">
               {options.map((option, optionIndex) => (
                 <label
-                  key={option}
+                  key={optionIndex}
                   className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-secondary/50"
                 >
                   <input
                     className="peer sr-only"
                     type="radio"
                     name={`question_${current.id}`}
-                    value={option}
-                    checked={draft === option}
-                    onChange={() => setDraft(option)}
+                    value={option.text}
+                    checked={draft === option.text}
+                    onChange={() => setDraft(option.text)}
                   />
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-sm font-semibold peer-checked:bg-primary peer-checked:text-primary-foreground">
-                    {String.fromCharCode(65 + optionIndex)}
+                    {optionLabel(optionIndex)}
                   </span>
-                  {option}
+                  {option.text}
                 </label>
               ))}
             </div>

@@ -7,6 +7,7 @@ import { requireProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { normalizeOptions, optionLabel } from "@/lib/options";
 import type { Json } from "@/types/database";
 
 type ResponsesPageProps = {
@@ -177,9 +178,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
       <div className="grid gap-4">
         {answers.map((answer) => {
           const question = answer.questions;
-          const options = Array.isArray(question?.options)
-            ? question.options.filter((option): option is string => typeof option === "string")
-            : [];
+          const options = normalizeOptions(question?.options);
           const given = answer.student_answer.trim();
           const key = question?.correct_answer?.trim() ?? "";
           const isMcq = question?.question_type === "mcq";
@@ -225,11 +224,11 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                 {isMcq ? (
                   <div className="grid gap-2">
                     {options.map((option, optionIndex) => {
-                      const chosen = option === given;
-                      const isKey = Boolean(key) && option === key;
+                      const chosen = option.text === given;
+                      const isKey = Boolean(key) && option.text === key;
                       return (
                         <div
-                          key={option}
+                          key={optionIndex}
                           className={`flex items-center gap-3 rounded-lg border p-2.5 text-sm ${
                             isKey
                               ? "border-primary bg-secondary/50"
@@ -239,9 +238,9 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                           }`}
                         >
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-xs font-semibold">
-                            {String.fromCharCode(65 + optionIndex)}
+                            {optionLabel(optionIndex)}
                           </span>
-                          <span className="flex-1">{option}</span>
+                          <span className="flex-1">{option.text}</span>
                           {chosen ? (
                             <span className="text-xs text-muted-foreground">your answer</span>
                           ) : null}

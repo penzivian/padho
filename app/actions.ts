@@ -25,6 +25,7 @@ import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { generateInviteCode, normalizePhone } from "@/lib/utils";
+import { optionTexts } from "@/lib/options";
 import type { Insert, Row } from "@/types/database";
 
 type ActionState<T = null> = {
@@ -723,9 +724,7 @@ export async function updateAnswerKeyAction(formData: FormData) {
     const letter = key[question.position];
     if (!letter || question.question_type !== "mcq") continue;
 
-    const options = Array.isArray(question.options)
-      ? question.options.filter((option): option is string => typeof option === "string")
-      : [];
+    const options = optionTexts(question.options);
     const optionIndex = letter.charCodeAt(0) - 65;
     if (optionIndex < 0 || optionIndex >= options.length) continue;
 
@@ -1056,9 +1055,8 @@ export async function savePaperToBankAction(formData: FormData) {
 
   const rows: Insert<"bank_questions">[] = [];
   for (const question of questions) {
-    const options = Array.isArray(question.options)
-      ? question.options.filter((option): option is string => typeof option === "string")
-      : null;
+    // Text only for now: A4 carries option diagrams through to the bank.
+    const options = question.question_type === "mcq" ? optionTexts(question.options) : null;
 
     // The bank mirrors questions_mcq_shape; an MCQ with fewer than two options would be
     // rejected by the check constraint, so skip rather than fail the whole import.
@@ -1164,9 +1162,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
-    options: Array.isArray(row.options)
-      ? row.options.filter((option): option is string => typeof option === "string")
-      : null,
+    options: row.question_type === "mcq" ? optionTexts(row.options) : null,
     correct_answer: row.correct_answer,
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),

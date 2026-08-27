@@ -88,7 +88,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 
 ### A — Diagrams in options (four graphs as the four answers)
 
-- [ ] **A1 · `lib/options.ts` + migrate the six read sites** — `todo`
+- [x] **A1 · `lib/options.ts` + migrate the six read sites** — `done`
   - New pure module: `type QuestionOption = { text: string; image_path?: string | null }`, plus
     `normalizeOptions(raw: unknown): QuestionOption[]` accepting **both** legacy `string[]` and the
     new object form, and `optionText(o)`. Unit-tested.
@@ -219,3 +219,9 @@ Newest last. One line per run: date · item · outcome.
 - 2026-08-25 · setup · Added sections S (static landing) and L (SEO/errors/legal) after auditing
   the public surface: every route builds as `ƒ`, and robots/sitemap/404/error/legal are all
   absent. Recorded D6 — staying on Next+Vercel, not migrating to Astro/Cloudflare.
+- 2026-08-26 · infra · First scheduled run pushed nothing: fired sessions run unattended in auto
+  permission mode and git was on no allowlist, so the push could never be approved. Added
+  `.claude/settings.json` (project settings travel into every fresh container). Routine model
+  switched to Opus 5; prompt now pushes an `in-progress` claim as a tripwire before building.
+- 2026-08-26 · A1 · done. `lib/options.ts` + 10 tests; all six `typeof option === "string"` sites
+  now go through it. Behaviour unchanged for existing string papers. 113 → 123 tests, green.
