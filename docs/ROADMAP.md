@@ -70,6 +70,17 @@ the browser renders pages to webp and posts the images to the server action.
 **D5 — `image_url` is UI-only, never persisted.** Applies to options exactly as it does to
 questions. Storing a URL leaks the diagram to anyone with the link, including before a test opens.
 
+**D7 — Nothing that calls `cookies()` belongs in the root layout.** `<AppNav />` sat there and
+made *every* route dynamic, including the marketing page and the sign-in screen, for a component
+that renders `null` when logged out. It now lives in per-section layouts. Anything added to
+`app/layout.tsx` in future must be static, or `/` silently stops being statically rendered.
+Watch for it in the build output: `○ /` is the signal, `ƒ /` means someone regressed it.
+
+**D8 — A middleware redirect must carry the session cookies forward.** `NextResponse.redirect()`
+builds a fresh response, which drops the refreshed cookies `getUser()` just wrote onto the
+original — silently signing the user out on exactly the requests that redirect. `withCookies()`
+in `middleware.ts` copies them across; use it for every redirect added there.
+
 **D6 — Stay on Next.js + Vercel + Supabase. Do not migrate to Astro or Cloudflare.** Evaluated
 2026-08-25 against the "micro tool site" stack (AstroJS + Cloudflare Pages). It solves the
 opposite problem: Astro wins on public, static, SEO-fed content pages by shipping zero JS, while
@@ -120,7 +131,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 
 ### S — Static public surface (do this **before** the landing rebuild)
 
-- [ ] **S1 · Make `/` static by moving the auth redirect into middleware** — `todo`
+- [x] **S1 · Make `/` static by moving the auth redirect into middleware** — `done`
   - Today **every route is `ƒ`** — dynamic, server-rendered per request. The only static asset in
     the whole build is `manifest.webmanifest`. That includes `/`, the one page Google will ever
     crawl: it calls `getCurrentProfile()` and waits on Supabase before it can paint, for every
@@ -247,3 +258,10 @@ Newest last. One line per run: date · item · outcome.
   `toStoredOptions`. D3 has a regression test: the same question re-cropped fingerprints
   identically, while two questions sharing a stem still separate. 128 → 130 tests, green.
   Section A complete.
+- 2026-08-26 · S1 · done. `/` and `/_not-found` now build as `○`. **The landing page was never
+  the blocker** — the ROOT layout rendered `<AppNav />`, which calls `getCurrentProfile()` →
+  `cookies()`, making every route in the app dynamic. AppNav returns null when logged out, so on
+  `/` and `/auth` it was pure cost with no output. It moved into four small section layouts
+  (teacher/student/profile/onboarding); the root layout no longer touches cookies. The
+  signed-in redirect and Supabase's auth-param fallback moved into `middleware.ts`, so the page
+  no longer reads `searchParams` (which alone would keep it dynamic). See D7.

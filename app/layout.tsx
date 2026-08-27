@@ -3,7 +3,6 @@ import { IBM_Plex_Mono, Public_Sans, Spectral } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
-import { AppNav } from "@/components/app-nav";
 
 import "./globals.css";
 
@@ -55,7 +54,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})();"
           }}
         />
-        <AppNav />
         {children}
         <Analytics />
         <SpeedInsights />
