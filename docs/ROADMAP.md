@@ -70,6 +70,14 @@ the browser renders pages to webp and posts the images to the server action.
 **D5 — `image_url` is UI-only, never persisted.** Applies to options exactly as it does to
 questions. Storing a URL leaks the diagram to anyone with the link, including before a test opens.
 
+**D9 — A deliberately dark band must not use `bg-primary`.** The landing page's thesis band used
+`bg-primary` / `text-primary-foreground`. In dark mode `--primary` resolves to a bright mint and
+`--primary-foreground` to near-black, so the band inverted — the loudest element on the page
+became a glowing turquoise slab. It is now pinned to the same `from-[#1a6b63] to-[#14544e]`
+gradient the auth brand panel uses, with explicit light text, so it stays deep in both themes.
+Any component meant to be dark regardless of theme needs literal colors, not semantic tokens
+whose meaning flips.
+
 **D7 — Nothing that calls `cookies()` belongs in the root layout.** `<AppNav />` sat there and
 made *every* route dynamic, including the marketing page and the sign-in screen, for a component
 that renders `null` when logged out. It now lives in per-section layouts. Anything added to
@@ -150,7 +158,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 
 ### B — Landing page
 
-- [ ] **B1 · Rebuild the landing page** — `todo`
+- [x] **B1 · Rebuild the landing page** — `done`
   - `app/page.tsx` is 105 lines with three feature bullets. Rebuild denser but still calm:
     hero with one-line value prop, a three-step "how it works", a six-card feature grid, and the
     three differentiators from the positioning work (runs on your own papers · learns how *you*
@@ -160,7 +168,7 @@ real content/blog operation appears, and then as a separate site on a subdomain,
     no new fonts — Spectral / Public Sans / IBM Plex Mono only.
   - **Acceptance:** builds clean, no horizontal scroll at 360px, correct in both themes.
 
-- [ ] **B2 · Landing polish and verification** — `todo`
+- [x] **B2 · Landing polish and verification** — `done`
   - Responsive pass at 360 / 768 / 1440, both themes, reduced-motion respected, copy tightened,
     real screenshots or honest placeholders (never fabricated numbers — O3 does that and it reads
     as theatre when the live counter disagrees).
@@ -265,3 +273,12 @@ Newest last. One line per run: date · item · outcome.
   (teacher/student/profile/onboarding); the root layout no longer touches cookies. The
   signed-in redirect and Supabase's auth-param fallback moved into `middleware.ts`, so the page
   no longer reads `searchParams` (which alone would keep it dynamic). See D7.
+- 2026-08-26 · B1+B2 · done. Landing rebuilt: header, hero, the ownership trio, a numbered
+  three-step "how it works", a six-card feature grid, the thesis band, footer. Positioned on
+  ownership, never on "AI". No invented numbers or testimonials — O3's live counter says 14
+  active streaks while its marketing block claims 3,210, and that gap is exactly what makes
+  fabricated proof read as theatre. Verified by actually rendering it (headless Chromium against
+  `next start`) at 360 and 1440 in both themes: no horizontal overflow at any size, correct
+  heading order (1×h1, 3×h2, 9×h3), no console errors beyond the two `_vercel/*` analytics
+  scripts that only exist on a Vercel deploy. `/` still builds `○` at 192 B. **One real bug
+  found and fixed** — see D9.
