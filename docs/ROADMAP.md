@@ -282,3 +282,13 @@ Newest last. One line per run: date · item · outcome.
   heading order (1×h1, 3×h2, 9×h3), no console errors beyond the two `_vercel/*` analytics
   scripts that only exist on a Vercel deploy. `/` still builds `○` at 192 B. **One real bug
   found and fixed** — see D9.
+- 2026-08-29 · B1 revision · Redesigned. The first pass was correct but flat — four sections of
+  the same shape (left heading, row of bordered cards) and a dead right third on desktop, and it
+  never showed the product. Now: split hero with the CBT question palette beside the copy, the
+  ownership trio as a ruled 01/02/03 list rather than more cards, "how it works" beside a
+  paper-builder vignette showing four graphs as four options, and a bento feature grid whose wide
+  card carries a topic-strength visual. `components/marketing/vignettes.tsx` holds the three
+  illustrations — server components, so `/` is still `○` at 192 B with no client JS. They copy
+  their tile classes from `cbt-shell.tsx` so they cannot drift from the real screen, and they
+  assert no usage numbers. Re-verified at 360/1440 in both themes: no overflow, no console
+  errors. Sticky header blur is `sm:`-only, matching AppNav's Android scroll-jank fix.
