@@ -175,19 +175,19 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 
 ### L — SEO, error pages and legal (after the landing rebuild)
 
-- [ ] **L1 · `robots.ts` and `sitemap.ts`** — `todo`
+- [x] **L1 · `robots.ts` and `sitemap.ts`** — `done`
   - Neither exists, so nothing tells Google what not to index. Allow the public pages; disallow
     `/teacher/`, `/student/`, `/profile/`, `/onboarding`, `/auth`. Sitemap lists only the public
     routes. Use the App Router metadata files (`app/robots.ts`, `app/sitemap.ts`), matching the
     existing `app/manifest.ts` pattern.
 
-- [ ] **L2 · Custom 404 and error boundaries** — `todo`
+- [x] **L2 · Custom 404 and error boundaries** — `done`
   - `app/not-found.tsx`, `app/error.tsx`, `app/global-error.tsx` are all absent, so an unhandled
     exception currently shows the stock Next page. The app has a loading skeleton on every route
     and no error state — close the gap using `components/page-skeleton.tsx` for visual continuity.
     Error pages must not leak stack traces to students.
 
-- [ ] **L3 · Legal pages: privacy, terms, contact, refund** — `todo`
+- [x] **L3 · Legal pages: privacy, terms, contact, refund** — `done`
   - None exist. **This is a hard blocker on charging money:** Razorpay and every Indian payment
     gateway require a privacy policy, terms, refund policy and a contact page before approving a
     merchant account. Needed before the day-46 pricing step in the positioning plan, not after.
@@ -217,6 +217,14 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 ---
 
 ## Blocked on Supratim
+
+- **Legal pages need a professional review before charging.** `app/(legal)/` describes what the
+  app genuinely does — the data inventory was taken from the actual tables and third parties, not
+  boilerplate — but it was written by an engineer, not a lawyer. Razorpay will accept these to
+  open a merchant account; that is not the same as them being correct. Have someone qualified
+  read them before the day-46 pricing step, and fill in real prices in `/refund` at that point.
+- **Contact address is a personal Gmail.** Fine now; move to a support@ address on the custom
+  domain when that lands, and update all four legal pages plus the footer.
 
 - **`PLATFORM_OWNER_EMAILS` must contain `supratimdebshan@gmail.com` in the Vercel production
   environment**, or `/teacher/library` denies everyone (it fails closed by design). Unverified —
@@ -292,3 +300,14 @@ Newest last. One line per run: date · item · outcome.
   their tile classes from `cbt-shell.tsx` so they cannot drift from the real screen, and they
   assert no usage numbers. Re-verified at 360/1440 in both themes: no overflow, no console
   errors. Sticky header blur is `sm:`-only, matching AppNav's Android scroll-jank fix.
+- 2026-08-30 · L1+L2+L3 · done. `robots.ts` disallows every signed-in route; `sitemap.ts` lists
+  only the five public pages. `siteUrl()` in `lib/env.ts` is the single origin source — it
+  prefers `NEXT_PUBLIC_SITE_URL`, then Vercel's production URL, so a preview build still emits
+  the production origin instead of its own throwaway hostname. Added `not-found.tsx`,
+  `error.tsx` and `global-error.tsx` (the last ships its own `<html>` and inline styles, since
+  whatever failed may be the stylesheet). Error pages never render the error object — students
+  see them too. Four legal pages under `app/(legal)/`, linked from the landing footer. All six
+  new routes build `○`. Verified by serving the build: correct robots/sitemap output, 404 on an
+  unknown path, no overflow at 360, no console errors.
+  **⚠ The legal text is an honest draft, not legal advice — it needs a lawyer's read before
+  the first rupee is taken.** See "Blocked on Supratim".

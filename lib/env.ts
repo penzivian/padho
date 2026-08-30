@@ -38,3 +38,16 @@ export function isPlatformOwner(email: string | null | undefined) {
   const owners = platformOwnerEmails();
   return owners.length > 0 && owners.includes(email.toLowerCase());
 }
+
+// Absolute origin for robots.txt, the sitemap and OG tags. Vercel sets VERCEL_PROJECT_
+// PRODUCTION_URL to the production domain on every deploy, so a preview build still emits the
+// production origin rather than its own throwaway hostname. Falls back to the current live URL.
+export function siteUrl() {
+  const explicit = optionalEnv("NEXT_PUBLIC_SITE_URL");
+  if (explicit) return explicit.replace(/\/+$/, "");
+
+  const vercel = optionalEnv("VERCEL_PROJECT_PRODUCTION_URL");
+  if (vercel) return `https://${vercel}`;
+
+  return "https://padho-three.vercel.app";
+}

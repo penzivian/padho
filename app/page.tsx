@@ -70,6 +70,13 @@ const FEATURES = [
   }
 ];
 
+const LEGAL_LINKS = [
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/refund", label: "Refunds" },
+  { href: "/contact", label: "Contact" }
+];
+
 // Statically rendered. The signed-in redirect and Supabase's auth-param fallback both moved to
 // middleware.ts — reading searchParams here would make the route dynamic again.
 export default function HomePage() {
@@ -290,7 +297,7 @@ export default function HomePage() {
       </main>
 
       <footer className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <span className="flex items-center gap-2">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary font-serif text-sm font-semibold text-primary-foreground">
@@ -300,7 +307,21 @@ export default function HomePage() {
             </span>
             <p className="script-note mt-2">teaching, tests &amp; progress — in one place</p>
           </div>
-          <p className="script-note">Made for tutors and small institutes · Agartala</p>
+
+          <div className="flex flex-col gap-3 sm:items-end">
+            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              {LEGAL_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            <p className="script-note">Made for tutors and small institutes · Agartala</p>
+          </div>
         </div>
       </footer>
     </div>
