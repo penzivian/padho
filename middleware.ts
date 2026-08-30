@@ -74,16 +74,25 @@ export async function middleware(request: NextRequest) {
     }
 
     // A signed-in visitor gets their dashboard rather than the marketing page.
+    //
+    // Wrapped because this is the one query in the request path with nothing behind it: an
+    // unhandled rejection here would 500 the homepage for everyone signed in. Falling through
+    // serves them the landing page instead, which is a wrong-but-harmless outcome they can
+    // click past — and every route they actually want still gates itself with requireProfile.
     if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      return withCookies(
-        new URL(profile ? `/${profile.role}` : "/onboarding", request.url),
-        response
-      );
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        return withCookies(
+          new URL(profile ? `/${profile.role}` : "/onboarding", request.url),
+          response
+        );
+      } catch {
+        return response;
+      }
     }
   }
 
