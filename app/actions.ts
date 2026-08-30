@@ -15,7 +15,8 @@ import {
 } from "@/lib/ai";
 import { devLoginCodesEnabled, isPlatformOwner, optionalEnv } from "@/lib/env";
 import { parseAnswerKey } from "@/lib/extract";
-import { QUESTION_IMAGE_BUCKET } from "@/lib/question-images";
+import { describeFigureWarning } from "@/lib/pdf-figures";
+import { QUESTION_IMAGE_BUCKET, signQuestionImages } from "@/lib/question-images";
 import { normalizeForFingerprint, sanitizeSearchTerm, topicKey } from "@/lib/question-bank";
 import { loadCalibrationBlock } from "@/lib/calibration-source";
 import { buildProgressSnapshot, scoreMcqAnswer } from "@/lib/grading";
@@ -24,6 +25,12 @@ import { buildPracticeAttempt, isMcqAnswerCorrect } from "@/lib/practice";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { generateInviteCode, normalizePhone } from "@/lib/utils";
+import {
+  collectOptionImagePaths,
+  optionTexts,
+  signOptions,
+  toStoredOptions
+} from "@/lib/options";
 import type { Insert, Row } from "@/types/database";
 
 type ActionState<T = null> = {
@@ -36,6 +43,9 @@ export type DraftQuestionsState = ActionState<{
   questions: DraftQuestion[];
   fileUrl?: string;
   source: "uploaded" | "ai_generated";
+  // Set when the uploaded paper looks like it carries diagrams. Extraction reads text only,
+  // so without this a figure-heavy paper extracts "cleanly" and the figures are just gone.
+  figureWarning?: string;
 }>;
 
 export type DoubtState = ActionState<{ answer: string }>;
@@ -292,6 +302,21 @@ export async function generateDraftQuestionsAction(
   }
 }
 
+// Reads the uploaded PDF's text geometry to warn when a paper carries diagrams. Kept here
+// rather than in lib/pdf-figures.ts so that module stays pure and unit-testable, and so pdfjs
+// is never pulled into a client bundle. A failure here must never fail the extraction itself —
+// the questions are already parsed by this point.
+async function describeUploadedFigures(file: File): Promise<string | null> {
+  if (!file.type.includes("pdf")) return null;
+  try {
+    const { extractTextItems } = await import("unpdf");
+    const { items } = await extractTextItems(new Uint8Array(await file.arrayBuffer()));
+    return describeFigureWarning(items);
+  } catch {
+    return null;
+  }
+}
+
 export async function extractDraftQuestionsAction(
   _previous: DraftQuestionsState,
   formData: FormData
@@ -317,7 +342,16 @@ export async function extractDraftQuestionsAction(
 
     const questions = await extractQuestionsFromFile(fileValue);
     await recordAiUsage(user.id, user.id, "paper_extraction");
-    return { ok: true, message: "Draft ready", data: { questions, fileUrl, source: "uploaded" } };
+    return {
+      ok: true,
+      message: "Draft ready",
+      data: {
+        questions,
+        fileUrl,
+        source: "uploaded",
+        figureWarning: (await describeUploadedFigures(fileValue)) ?? undefined
+      }
+    };
   } catch (error) {
     return { ok: false, message: errorMessage(error) };
   }
@@ -695,9 +729,7 @@ export async function updateAnswerKeyAction(formData: FormData) {
     const letter = key[question.position];
     if (!letter || question.question_type !== "mcq") continue;
 
-    const options = Array.isArray(question.options)
-      ? question.options.filter((option): option is string => typeof option === "string")
-      : [];
+    const options = optionTexts(question.options);
     const optionIndex = letter.charCodeAt(0) - 65;
     if (optionIndex < 0 || optionIndex >= options.length) continue;
 
@@ -1028,9 +1060,9 @@ export async function savePaperToBankAction(formData: FormData) {
 
   const rows: Insert<"bank_questions">[] = [];
   for (const question of questions) {
-    const options = Array.isArray(question.options)
-      ? question.options.filter((option): option is string => typeof option === "string")
-      : null;
+    // Diagrams ride along with the option they belong to. toStoredOptions drops the UI-only
+    // image_url, so no URL can reach the column.
+    const options = question.question_type === "mcq" ? toStoredOptions(question.options) : null;
 
     // The bank mirrors questions_mcq_shape; an MCQ with fewer than two options would be
     // rejected by the check constraint, so skip rather than fail the whole import.
@@ -1053,7 +1085,8 @@ export async function savePaperToBankAction(formData: FormData) {
       fingerprint: fingerprintQuestion({
         questionText: question.question_text,
         questionType: question.question_type,
-        options
+        // Text only — D3. The same question re-cropped must still dedupe to one row.
+        options: optionTexts(options)
       })
     });
   }
@@ -1084,6 +1117,10 @@ export type BankScope = "mine" | "library" | "all";
 export type BankSearchRow = DraftQuestion & {
   source_label: string;
   is_public: boolean;
+  // Short-lived signed URL for the diagram, so the teacher can SEE what a bank question
+  // carries before reusing it. A library question lives in the owner's storage folder, which
+  // another teacher's own storage policy cannot read — signing is the only way through.
+  image_url: string | null;
 };
 
 export type BankSearchResult = {
@@ -1123,18 +1160,28 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   const { data, error } = await query;
   if (error) return { ok: false, message: error.message };
 
+  // Defense-in-depth, the same shape as everywhere else: the rows above came back through the
+  // RLS-respecting client, so the teacher has already been proven able to see them. Only then
+  // does signQuestionImages reach for the admin client. No caller-supplied path is ever signed.
+  const signedImages = await signQuestionImages([
+    ...(data ?? []).map((row) => row.image_path),
+    ...collectOptionImagePaths((data ?? []).map((row) => row.options))
+  ]);
+
   const questions: BankSearchRow[] = (data ?? []).map((row) => ({
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
-    options: Array.isArray(row.options)
-      ? row.options.filter((option): option is string => typeof option === "string")
-      : null,
+    // Signed so the picker can show what an option carries, and so a question copied into the
+    // builder keeps its thumbnails. A library question lives in the owner's storage folder,
+    // which another teacher's own storage policy cannot read — signing is the only way through.
+    options: row.question_type === "mcq" ? signOptions(row.options, signedImages) : null,
     correct_answer: row.correct_answer,
     max_marks: Number(row.max_marks),
     negative_marks: Number(row.negative_marks),
     rubric: row.rubric,
     image_path: row.image_path,
+    image_url: row.image_path ? (signedImages.get(row.image_path) ?? null) : null,
     source_label: row.source_label,
     is_public: row.is_public
   }));
@@ -1174,7 +1221,7 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
 
   const rows: Insert<"bank_questions">[] = [];
   for (const question of usable) {
-    const options = question.question_type === "mcq" ? (question.options ?? []) : null;
+    const options = question.question_type === "mcq" ? toStoredOptions(question.options) : null;
     // Mirrors bank_questions_mcq_shape — skip rather than fail the whole upload.
     if (question.question_type === "mcq" && (!options || options.length < 2)) continue;
 
@@ -1197,7 +1244,8 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
       fingerprint: fingerprintQuestion({
         questionText: question.question_text,
         questionType: question.question_type,
-        options
+        // Text only — D3. The same question re-cropped must still dedupe to one row.
+        options: optionTexts(options)
       })
     });
   }
@@ -1509,7 +1557,7 @@ function normalizeDraftQuestions(questions: DraftQuestion[]) {
       return {
       ...question,
       topic: question.topic.trim() || "General",
-      options: question.question_type === "mcq" ? question.options ?? [] : null,
+      options: question.question_type === "mcq" ? toStoredOptions(question.options) : null,
       correct_answer: question.question_type === "mcq" ? question.correct_answer : null,
       rubric: question.question_type === "subjective" ? question.rubric : null,
       max_marks: maxMarks,

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  answerDoubt,
-  generateQuestions,
-  gradeSubjectiveAnswer,
-  questionListSchema
-} from "@/lib/ai";
+import { answerDoubt, generateQuestions, gradeSubjectiveAnswer } from "@/lib/ai";
+import { optionTexts } from "@/lib/options";
+
+// Note: questionListSchema is deliberately NOT used here. It validates the JSON Claude returns
+// over the wire, where options are plain strings. generateQuestions returns DraftQuestions,
+// whose options carry a per-option diagram slot. Two different shapes that used to coincide —
+// asserting on the draft shape is what these tests actually mean.
 
 // Force the deterministic mock path so these tests stay hermetic (no network or Supabase),
 // independent of any ANTHROPIC_API_KEY / AI_MOCK_MODE in the ambient environment.
@@ -23,11 +24,10 @@ describe("AI mock: generateQuestions", () => {
       mix: "mcq"
     });
 
-    const parsed = questionListSchema.parse(questions);
-    assert.equal(parsed.length, 4);
-    assert.ok(parsed.every((question) => question.question_type === "mcq"));
-    for (const question of parsed) {
-      assert.ok(Array.isArray(question.options) && question.options.length > 0);
+    assert.equal(questions.length, 4);
+    assert.ok(questions.every((question) => question.question_type === "mcq"));
+    for (const question of questions) {
+      assert.ok(optionTexts(question.options).length > 0);
       assert.equal(typeof question.correct_answer, "string");
     }
   });
@@ -43,12 +43,11 @@ describe("AI mock: generateQuestions", () => {
       mix: "subjective"
     });
 
-    const parsed = questionListSchema.parse(questions);
-    assert.equal(parsed.length, 4);
-    assert.ok(parsed.some((question) => question.question_type === "subjective"));
-    assert.ok(parsed.some((question) => question.question_type === "mcq"));
+    assert.equal(questions.length, 4);
+    assert.ok(questions.some((question) => question.question_type === "subjective"));
+    assert.ok(questions.some((question) => question.question_type === "mcq"));
 
-    for (const question of parsed.filter((item) => item.question_type === "subjective")) {
+    for (const question of questions.filter((item) => item.question_type === "subjective")) {
       assert.equal(question.options, null);
       assert.equal(question.correct_answer, null);
       assert.ok(typeof question.rubric === "string" && question.rubric.length > 0);

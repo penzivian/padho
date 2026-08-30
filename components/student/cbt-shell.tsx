@@ -14,14 +14,14 @@ import {
   type AttemptAnswer,
   type QuestionState
 } from "@/lib/attempt";
-import type { Json } from "@/types/database";
+import { optionLabel, type SignedQuestionOption } from "@/lib/options";
 
 export type CbtQuestion = {
   id: string;
   question_text: string;
   question_type: "mcq" | "subjective";
   topic: string;
-  options: Json | null;
+  options: SignedQuestionOption[];
   max_marks: number;
   negative_marks: number;
   image_path: string | null;
@@ -137,9 +137,7 @@ export function CbtShell({
     );
   }
 
-  const options = Array.isArray(current.options)
-    ? current.options.filter((option): option is string => typeof option === "string")
-    : [];
+  const options = current.options;
   const marked = answers.get(current.id)?.markedForReview ?? false;
   const lastQuestion = index === questions.length - 1;
   const minutesLeft = Math.floor(msLeft / 60_000);
@@ -228,21 +226,33 @@ export function CbtShell({
             <div className="grid gap-2">
               {options.map((option, optionIndex) => (
                 <label
-                  key={option}
+                  key={optionIndex}
                   className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-secondary/50"
                 >
                   <input
                     className="peer sr-only"
                     type="radio"
                     name={`question_${current.id}`}
-                    value={option}
-                    checked={draft === option}
-                    onChange={() => setDraft(option)}
+                    value={option.text}
+                    checked={draft === option.text}
+                    onChange={() => setDraft(option.text)}
                   />
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-sm font-semibold peer-checked:bg-primary peer-checked:text-primary-foreground">
-                    {String.fromCharCode(65 + optionIndex)}
+                    {optionLabel(optionIndex)}
                   </span>
-                  {option}
+                  {option.image_url ? (
+                    <span className="flex flex-1 flex-col gap-1.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={option.image_url}
+                        alt={`Option ${optionLabel(optionIndex)}`}
+                        className="max-h-40 w-auto rounded-md border bg-white object-contain"
+                      />
+                      <span>{option.text}</span>
+                    </span>
+                  ) : (
+                    <span className="flex-1">{option.text}</span>
+                  )}
                 </label>
               ))}
             </div>

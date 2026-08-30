@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { aiMockMode, optionalEnv, requiredEnv } from "@/lib/env";
 import { extractDraftQuestions } from "@/lib/extract";
+import { normalizeOptions, type DraftOption } from "@/lib/options";
 
 const draftQuestionSchema = z.object({
   question_text: z.string().min(1),
@@ -25,7 +26,10 @@ export type DraftQuestion = {
   question_text: string;
   question_type: "mcq" | "subjective";
   topic: string;
-  options: string[] | null;
+  // Objects rather than plain strings so an answer can carry its own diagram (four graphs as
+  // the four choices). normalizeOptions accepts the legacy string form too, so extraction and
+  // the AI path can keep emitting strings and be normalized at the boundary.
+  options: DraftOption[] | null;
   correct_answer: string | null;
   max_marks: number;
   // Penalty magnitude for a wrong MCQ answer. Optional on the draft so extraction and the
@@ -33,6 +37,11 @@ export type DraftQuestion = {
   negative_marks?: number;
   // Storage path of a diagram for this question. Never a URL — the app signs it per request.
   image_path?: string | null;
+  // Preview URL for the paper-builder UI only: a blob: URL for a crop the teacher just made,
+  // or a short-lived signed URL for a bank question's diagram. Deliberately NOT persisted —
+  // normalizeDraftQuestions builds its rows field by field and drops it. Never store a URL,
+  // or the diagram leaks to anyone holding the link, including before the test opens.
+  image_url?: string | null;
   rubric: string | null;
 };
 export type AiGradeSuggestion = z.infer<typeof gradeSchema>;
@@ -189,7 +198,7 @@ function mockQuestions(input: GenerateQuestionInput): DraftQuestion[] {
       question_text: `${input.subject}: which option best matches ${input.topic} concept ${n}?`,
       question_type: "mcq",
       topic: input.topic || "General",
-      options: ["Option A", "Option B", "Option C", "Option D"],
+      options: normalizeOptions(["Option A", "Option B", "Option C", "Option D"]),
       correct_answer: "Option A",
       max_marks: 1,
       rubric: null
@@ -202,7 +211,7 @@ function normalizeAiQuestions(questions: ParsedDraftQuestion[]): DraftQuestion[]
     question_text: question.question_text,
     question_type: question.question_type,
     topic: question.topic ?? "General",
-    options: question.options ?? null,
+    options: question.options ? normalizeOptions(question.options) : null,
     correct_answer: question.correct_answer ?? null,
     max_marks: question.max_marks ?? 1,
     negative_marks: question.negative_marks ?? 0,

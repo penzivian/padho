@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { signQuestionImages } from "@/lib/question-images";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatDateTime } from "@/lib/utils";
+import { collectOptionImagePaths, optionLabel, signOptions } from "@/lib/options";
 import type { Json } from "@/types/database";
 
 type ResponsesPageProps = {
@@ -91,7 +92,10 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
   const total = answers.reduce((sum, answer) => sum + Number(answer.questions?.max_marks ?? 0), 0);
   const attempted = answers.filter((answer) => answer.student_answer.trim()).length;
   const signedImages = await signQuestionImages(
-    answers.map((answer) => answer.questions?.image_path)
+    [
+      ...answers.map((answer) => answer.questions?.image_path),
+      ...collectOptionImagePaths(answers.map((answer) => answer.questions?.options))
+    ]
   );
 
   return (
@@ -141,9 +145,7 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
       <div className="grid gap-4">
         {answers.map((answer) => {
           const question = answer.questions;
-          const options = Array.isArray(question?.options)
-            ? question.options.filter((option): option is string => typeof option === "string")
-            : [];
+          const options = signOptions(question?.options, signedImages);
           const given = answer.student_answer.trim();
           const key = question?.correct_answer?.trim() ?? "";
           const isMcq = question?.question_type === "mcq";
@@ -191,11 +193,11 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                 {isMcq ? (
                   <div className="grid gap-2">
                     {options.map((option, optionIndex) => {
-                      const chosen = option === given;
-                      const isKey = key && option === key;
+                      const chosen = option.text === given;
+                      const isKey = key && option.text === key;
                       return (
                         <div
-                          key={option}
+                          key={optionIndex}
                           className={`flex items-center gap-3 rounded-lg border p-2.5 text-sm ${
                             isKey
                               ? "border-primary bg-secondary/50"
@@ -205,9 +207,21 @@ export default async function StudentResponsesPage({ params }: ResponsesPageProp
                           }`}
                         >
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-xs font-semibold">
-                            {String.fromCharCode(65 + optionIndex)}
+                            {optionLabel(optionIndex)}
                           </span>
-                          <span className="flex-1">{option}</span>
+                          {option.image_url ? (
+                            <span className="flex flex-1 flex-col gap-1.5">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={option.image_url}
+                                alt={`Option ${optionLabel(optionIndex)}`}
+                                className="max-h-32 w-auto rounded-md border bg-white object-contain"
+                              />
+                              <span>{option.text}</span>
+                            </span>
+                          ) : (
+                            <span className="flex-1">{option.text}</span>
+                          )}
                           {chosen ? (
                             <span className="text-xs text-muted-foreground">chose</span>
                           ) : null}

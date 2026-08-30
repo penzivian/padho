@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Save, Sparkles, Trash2, UploadCloud } from "lucide-react";
+import { Crop, Plus, Save, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { useFormState } from "react-dom";
 
@@ -13,6 +13,7 @@ import {
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { BankPicker } from "@/components/teacher/bank-picker";
+import { DiagramCropper } from "@/components/teacher/diagram-cropper";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
@@ -20,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { DraftQuestion } from "@/lib/ai";
+import { optionLabel, type DraftOption } from "@/lib/options";
 import { applyAnswerKey } from "@/lib/extract";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +50,15 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
   const [bulkNegative, setBulkNegative] = useState("");
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
+  // The uploaded paper is kept client-side so diagrams can be cropped straight out of it.
+  // Nothing is re-uploaded: this is the same File the extract form posted.
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [figureWarning, setFigureWarning] = useState("");
+  // Which slot the cropper is filling: a question's own diagram (option === null) or
+  // one answer option's.
+  const [cropTarget, setCropTarget] = useState<{ question: number; option: number | null } | null>(
+    null
+  );
 
   useEffect(() => {
     if (generateState.data) {
@@ -63,6 +74,7 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
       setQuestions(extractState.data.questions);
       setSource(extractState.data.source);
       setFileUrl(extractState.data.fileUrl);
+      setFigureWarning(extractState.data.figureWarning ?? "");
     }
     if (extractState.message) setMessage(extractState.message);
   }, [extractState]);
@@ -82,7 +94,12 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
         question_text: "",
         question_type: "mcq",
         topic: "General",
-        options: ["", "", "", ""],
+        options: [
+          { text: "", image_path: null },
+          { text: "", image_path: null },
+          { text: "", image_path: null },
+          { text: "", image_path: null }
+        ],
         correct_answer: "",
         max_marks: 1,
         negative_marks: 0,
@@ -122,13 +139,64 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
     );
   }
 
+  // Only blob: URLs are ours to release; a bank question's image_url is a signed URL.
+  function releasePreview(url: string | null | undefined) {
+    if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+  }
+
+  function clearDiagram(index: number) {
+    releasePreview(questions[index]?.image_url);
+    updateQuestion(index, { image_path: null, image_url: null });
+  }
+
   async function uploadDiagram(index: number, file: File) {
     const formData = new FormData();
     formData.set("image", file);
     setMessage("Uploading diagram…");
     const result = await uploadQuestionImageAction(formData);
     setMessage(result.message);
-    if (result.ok && result.path) updateQuestion(index, { image_path: result.path });
+    if (!result.ok || !result.path) return;
+
+    // Preview from the local file rather than signing a URL: the bytes are already here, and
+    // it means the teacher can SEE what landed on which question instead of a filename.
+    releasePreview(questions[index]?.image_url);
+    updateQuestion(index, { image_path: result.path, image_url: URL.createObjectURL(file) });
+  }
+
+  // A crop is just an upload whose file the teacher never had to make by hand.
+  async function attachCrop(target: { question: number; option: number | null }, blob: Blob) {
+    const suffix = target.option === null ? "diagram" : `option-${optionLabel(target.option)}`;
+    const file = new File([blob], `q${target.question + 1}-${suffix}.webp`, { type: blob.type });
+    if (target.option === null) await uploadDiagram(target.question, file);
+    else await uploadOptionDiagram(target.question, target.option, file);
+    setCropTarget(null);
+  }
+
+  function updateOption(questionIndex: number, optionIndex: number, patch: Partial<DraftOption>) {
+    const options = questions[questionIndex]?.options ?? [];
+    updateQuestion(questionIndex, {
+      options: options.map((option, i) => (i === optionIndex ? { ...option, ...patch } : option))
+    });
+  }
+
+  async function uploadOptionDiagram(questionIndex: number, optionIndex: number, file: File) {
+    const formData = new FormData();
+    formData.set("image", file);
+    setMessage("Uploading option diagram…");
+    const result = await uploadQuestionImageAction(formData);
+    setMessage(result.message);
+    if (!result.ok || !result.path) return;
+
+    releasePreview(questions[questionIndex]?.options?.[optionIndex]?.image_url);
+    updateOption(questionIndex, optionIndex, {
+      image_path: result.path,
+      image_url: URL.createObjectURL(file)
+    });
+  }
+
+  function clearOptionDiagram(questionIndex: number, optionIndex: number) {
+    releasePreview(questions[questionIndex]?.options?.[optionIndex]?.image_url);
+    updateOption(questionIndex, optionIndex, { image_path: null, image_url: null });
   }
 
   function addFromBank(incoming: DraftQuestion[]) {
@@ -236,7 +304,14 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
           </CardHeader>
           <form action={extractAction} className="grid gap-3">
             <FormField htmlFor="paper_file" label="Paper file">
-              <Input id="paper_file" name="paper_file" type="file" accept="image/*,application/pdf" required />
+              <Input
+                id="paper_file"
+                name="paper_file"
+                type="file"
+                accept="image/*,application/pdf"
+                required
+                onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)}
+              />
             </FormField>
             <SubmitButton pendingText="Extracting" variant="secondary">
               <UploadCloud className="h-4 w-4" aria-hidden="true" />
@@ -254,6 +329,11 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
                 {extractState.ok
                   ? `${extractState.message} — review the questions below.`
                   : extractState.message}
+              </p>
+            ) : null}
+            {figureWarning ? (
+              <p className="rounded-md border border-accent/40 bg-accent/10 p-3 text-sm">
+                {figureWarning}
               </p>
             ) : null}
           </form>
@@ -440,29 +520,52 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Diagram (optional)</p>
                   {question.image_path ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => updateQuestion(index, { image_path: null })}
-                    >
+                    <Button type="button" size="sm" variant="ghost" onClick={() => clearDiagram(index)}>
                       Remove
                     </Button>
                   ) : null}
                 </div>
+
                 {question.image_path ? (
-                  <p className="script-note break-all">Attached · {question.image_path.split("/").pop()}</p>
+                  // Show the diagram, not the filename. On a paper with twenty figures a
+                  // mis-ordered attachment is otherwise invisible until a student hits it.
+                  question.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={question.image_url}
+                      alt={`Diagram attached to question ${index + 1}`}
+                      className="max-h-48 w-auto rounded-md border bg-white object-contain"
+                    />
+                  ) : (
+                    <p className="script-note break-all">
+                      Attached · {question.image_path.split("/").pop()}
+                    </p>
+                  )
                 ) : (
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    aria-label={`Diagram for question ${index + 1}`}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) void uploadDiagram(index, file);
-                    }}
-                  />
+                  <div className="grid gap-2">
+                    {sourceFile ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setCropTarget({ question: index, option: null })}
+                      >
+                        <Crop className="h-4 w-4" aria-hidden="true" />
+                        Crop from {sourceFile.type.includes("pdf") ? "PDF" : "image"}
+                      </Button>
+                    ) : null}
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      aria-label={`Diagram for question ${index + 1}`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void uploadDiagram(index, file);
+                      }}
+                    />
+                  </div>
                 )}
+
                 <p className="script-note">
                   For circuit diagrams, graphs and figures. Shown to students with the question.
                 </p>
@@ -490,17 +593,92 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
               ) : null}
               {question.question_type === "mcq" ? (
                 <>
-                  <FormField htmlFor={`options_${index}`} label="Options (one per line)">
-                    <Textarea
-                      id={`options_${index}`}
-                      value={(question.options ?? []).join("\n")}
-                      onChange={(event) =>
+                  <div className="grid gap-2">
+                    <p className="text-sm font-medium">Options</p>
+                    {(question.options ?? []).map((option, optionIndex) => (
+                      <div key={optionIndex} className="grid gap-2 rounded-lg border p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted font-serif text-sm font-semibold">
+                            {optionLabel(optionIndex)}
+                          </span>
+                          <Input
+                            aria-label={`Option ${optionLabel(optionIndex)} for question ${index + 1}`}
+                            value={option.text}
+                            placeholder={option.image_path ? "Diagram only" : "Option text"}
+                            onChange={(event) =>
+                              updateOption(index, optionIndex, { text: event.target.value })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Remove option ${optionLabel(optionIndex)}`}
+                            onClick={() => {
+                              releasePreview(option.image_url);
+                              updateQuestion(index, {
+                                options: (question.options ?? []).filter((_, i) => i !== optionIndex)
+                              });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+
+                        {option.image_path ? (
+                          <div className="flex items-start gap-2">
+                            {option.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={option.image_url}
+                                alt={`Diagram on option ${optionLabel(optionIndex)}`}
+                                className="max-h-28 w-auto rounded-md border bg-white object-contain"
+                              />
+                            ) : (
+                              <p className="script-note break-all">Diagram attached</p>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => clearOptionDiagram(index, optionIndex)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ) : sourceFile ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="justify-self-start"
+                            onClick={() => setCropTarget({ question: index, option: optionIndex })}
+                          >
+                            <Crop className="h-4 w-4" aria-hidden="true" />
+                            Crop a diagram for {optionLabel(optionIndex)}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="justify-self-start"
+                      onClick={() =>
                         updateQuestion(index, {
-                          options: event.target.value.split("\n").filter(Boolean)
+                          options: [...(question.options ?? []), { text: "", image_path: null }]
                         })
                       }
-                    />
-                  </FormField>
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      Add option
+                    </Button>
+                    <p className="script-note">
+                      For graph or figure answers, crop a diagram onto the option. An option with
+                      only a diagram is labelled by its letter.
+                    </p>
+                  </div>
                   <FormField htmlFor={`answer_${index}`} label="Correct answer">
                     <Input
                       id={`answer_${index}`}
@@ -533,6 +711,15 @@ export function PaperBuilder({ batches }: { batches: BatchOption[] }) {
           </Button>
         </div>
       </section>
+
+      {sourceFile && cropTarget ? (
+        <DiagramCropper
+          file={sourceFile}
+          questionNumber={cropTarget.question + 1}
+          onCropped={(blob) => attachCrop(cropTarget, blob)}
+          onClose={() => setCropTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }
