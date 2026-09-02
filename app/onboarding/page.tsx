@@ -15,6 +15,16 @@ type OnboardingPageProps = {
 export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const session = await getCurrentProfile();
 
+  // A brand-new Google user has no profile row yet, so full_name would be blank — but Google
+  // already told us their name in the OAuth payload. Asking them to retype it is friction on
+  // the exact flow the provider exists to remove. Supabase puts it under full_name; some
+  // providers use name.
+  const metadata = session?.user?.user_metadata as
+    | { full_name?: string; name?: string }
+    | undefined;
+  const suggestedName =
+    session?.profile?.full_name || metadata?.full_name || metadata?.name || "";
+
   return (
     <main className="page-shell max-w-lg">
       <Card>
@@ -32,7 +42,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
             <Input
               id="full_name"
               name="full_name"
-              defaultValue={session?.profile?.full_name ?? ""}
+              defaultValue={suggestedName}
               required
             />
           </FormField>

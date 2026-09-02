@@ -218,6 +218,14 @@ real content/blog operation appears, and then as a separate site on a subdomain,
 
 ## Blocked on Supratim
 
+- **Google sign-in needs two console steps — there is no code left to write.** The action, the
+  button, the PKCE cookie write and the callback all work; the provider is simply not enabled.
+  (1) Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application),
+  authorised redirect URI `https://rimkfjivabguavmuddxo.supabase.co/auth/v1/callback`.
+  (2) Supabase → Authentication → Providers → Google → paste the client ID and secret, enable.
+  Then add the production origin under Authentication → URL Configuration → Redirect URLs.
+  Test with an account that has never signed in by email, so the new-user path is exercised.
+
 - **Legal pages need a professional review before charging.** `app/(legal)/` describes what the
   app genuinely does — the data inventory was taken from the actual tables and third parties, not
   boilerplate — but it was written by an engineer, not a lawyer. Razorpay will accept these to
