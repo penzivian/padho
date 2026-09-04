@@ -1,4 +1,5 @@
 import type { DraftQuestion } from "@/lib/ai";
+import { normalizeOptions } from "@/lib/options";
 
 // Pure parser for Vedantu's JEE-Main previous-year PDFs.
 //
@@ -139,7 +140,7 @@ export function toDraftQuestions(
       question_text: question.stem,
       question_type: "mcq" as const,
       topic: options.topic,
-      options: question.options,
+      options: normalizeOptions(question.options),
       // The bank stores the answer as the option TEXT, matching how `questions.correct_answer`
       // is compared in `scoreMcqAnswer` — a bare letter would never match a student's choice.
       correct_answer: question.answer

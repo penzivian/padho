@@ -1,4 +1,5 @@
 import type { DraftQuestion } from "@/lib/ai";
+import { normalizeOptions } from "@/lib/options";
 
 // Parser for Career Point's JEE Main papers (cms.careerpoint.ac.in).
 //
@@ -271,7 +272,9 @@ export function toDraftQuestions(
         question_text: question.stem,
         question_type: "mcq",
         topic: question.subject || "General",
-        options: question.options,
+        // Options widened to { text, image_path } for diagram answers; these papers are
+        // text-only, so they normalize straight through.
+        options: normalizeOptions(question.options),
         // Stored as option TEXT, matching applyAnswerKey and what scoreMcqAnswer compares.
         correct_answer: question.options[(question.answerIndex ?? 1) - 1] ?? null,
         max_marks: options.maxMarks,

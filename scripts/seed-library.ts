@@ -18,6 +18,7 @@ import { readFile } from "node:fs/promises";
 
 import { createClient } from "@supabase/supabase-js";
 
+import { toStoredOptions } from "../lib/options";
 import { normalizeForFingerprint } from "../lib/question-bank";
 
 type SourceQuestion = {
@@ -142,7 +143,9 @@ async function main() {
         // hides the duplicate rather than rendering "Physics · Physics".
         topic: subject,
         subject,
-        options,
+        // Canonical { text, image_path } shape. The legacy string form still reads fine via
+        // normalizeOptions, but new writes should not add to the pile of old-shaped rows.
+        options: toStoredOptions(options),
         correct_answer: question.correct_answer,
         max_marks: maxMarks,
         negative_marks: Math.min(Math.max(Number(question.negative_marks) || 0, 0), maxMarks),
