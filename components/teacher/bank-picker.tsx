@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Globe2, Library, Plus } from "lucide-react";
 
-import { searchBankAction, type BankScope, type BankSearchResult, type BankSearchRow } from "@/app/actions";
+import {
+  listBankSubjectsAction,
+  searchBankAction,
+  type BankScope,
+  type BankSearchResult,
+  type BankSearchRow
+} from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
@@ -22,6 +28,8 @@ type BankPickerProps = {
 export function BankPicker({ onAdd }: BankPickerProps) {
   const [term, setTerm] = useState("");
   const [topic, setTopic] = useState("");
+  const [subject, setSubject] = useState("");
+  const [subjects, setSubjects] = useState<string[]>([]);
   const [questionType, setQuestionType] = useState("");
   const [scope, setScope] = useState<BankScope>("all");
   const [results, setResults] = useState<BankSearchRow[]>([]);
@@ -29,10 +37,27 @@ export function BankPicker({ onAdd }: BankPickerProps) {
   const [added, setAdded] = useState<Set<number>>(new Set());
   const [isSearching, startSearching] = useTransition();
 
+  // The dropdown offers only subjects that actually exist in what this teacher can see, so it
+  // never presents a filter that returns nothing. One read on mount; the list is tiny.
+  useEffect(() => {
+    let active = true;
+    listBankSubjectsAction()
+      .then((values) => {
+        if (active) setSubjects(values);
+      })
+      .catch(() => {
+        // A failed lookup just means no dropdown options — search still works without it.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   function search() {
     const formData = new FormData();
     formData.set("term", term);
     formData.set("topic", topic);
+    formData.set("subject", subject);
     formData.set("question_type", questionType);
     formData.set("scope", scope);
 
@@ -86,7 +111,7 @@ export function BankPicker({ onAdd }: BankPickerProps) {
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_0.8fr_auto] sm:items-end">
+        <div className="grid gap-3 sm:grid-cols-[1fr_0.9fr_0.9fr_0.8fr_auto] sm:items-end">
           <FormField htmlFor="bank_term" label="Search">
             <Input
               id="bank_term"
@@ -94,6 +119,20 @@ export function BankPicker({ onAdd }: BankPickerProps) {
               placeholder="kinematics, newton's third law…"
               onChange={(event) => setTerm(event.target.value)}
             />
+          </FormField>
+          <FormField htmlFor="bank_subject" label="Subject">
+            <Select
+              id="bank_subject"
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+            >
+              <option value="">All subjects</option>
+              {subjects.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField htmlFor="bank_topic" label="Topic">
             <Input
@@ -175,6 +214,9 @@ export function BankPicker({ onAdd }: BankPickerProps) {
                       </div>
                     ) : null}
                     <p className="script-note mt-1">
+                      {question.subject && question.subject !== question.topic
+                        ? `${question.subject} · `
+                        : ""}
                       {question.topic} · {question.question_type === "mcq" ? "MCQ" : "Subjective"}{" "}
                       · {question.max_marks} marks
                       {Number(question.negative_marks ?? 0) > 0

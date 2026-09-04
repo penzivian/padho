@@ -1121,6 +1121,7 @@ export type BankSearchRow = DraftQuestion & {
   // carries before reusing it. A library question lives in the owner's storage folder, which
   // another teacher's own storage policy cannot read — signing is the only way through.
   image_url: string | null;
+  subject: string;
 };
 
 export type BankSearchResult = {
@@ -1140,13 +1141,14 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   const supabase = createSupabaseServerClient();
   const term = sanitizeSearchTerm(readString(formData, "term"));
   const topic = readString(formData, "topic");
+  const subject = readString(formData, "subject");
   const type = readString(formData, "question_type");
   const scope = readString(formData, "scope") as BankScope;
 
   let query = supabase
     .from("bank_questions")
     .select(
-      "question_text,question_type,topic,options,correct_answer,max_marks,negative_marks,rubric,image_path,source_label,is_public"
+      "question_text,question_type,topic,subject,options,correct_answer,max_marks,negative_marks,rubric,image_path,source_label,is_public"
     )
     .order("created_at", { ascending: false })
     .limit(50);
@@ -1155,6 +1157,9 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   if (scope === "library") query = query.eq("is_public", true);
   if (term) query = query.textSearch("search_vector", term, { type: "websearch" });
   if (topic) query = query.eq("topic_key", topicKey(topic));
+  // Subject is a plain label chosen by whoever published the row, so it is matched exactly
+  // rather than fuzzily — the picker offers only values that actually exist in the bank.
+  if (subject) query = query.eq("subject", subject);
   if (type === "mcq" || type === "subjective") query = query.eq("question_type", type);
 
   const { data, error } = await query;
@@ -1172,6 +1177,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
     question_text: row.question_text,
     question_type: row.question_type,
     topic: row.topic,
+    subject: row.subject ?? "",
     // Signed so the picker can show what an option carries, and so a question copied into the
     // builder keeps its thumbnails. A library question lives in the owner's storage folder,
     // which another teacher's own storage policy cannot read — signing is the only way through.
@@ -1187,6 +1193,25 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   }));
 
   return { ok: true, questions };
+}
+
+// Subjects present in the rows this teacher can see, for the picker's dropdown.
+//
+// Read through the RLS-respecting client on purpose: the same `owner_teacher_id = auth.uid()
+// or is_public` rule that governs the search governs this, so the dropdown can never offer a
+// subject whose questions the teacher would then be unable to retrieve.
+export async function listBankSubjectsAction(): Promise<string[]> {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("bank_questions")
+    .select("subject")
+    .not("subject", "eq", "")
+    .limit(1000);
+
+  if (error) return [];
+  return [...new Set((data ?? []).map((row) => row.subject).filter(Boolean))].sort();
 }
 
 export type LibraryPublishPayload = {
