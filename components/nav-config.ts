@@ -1,4 +1,13 @@
-import { ClipboardList, Dumbbell, FileText, House, type LucideIcon, MessagesSquare, UsersRound } from "lucide-react";
+import {
+  ClipboardList,
+  Dumbbell,
+  FileText,
+  House,
+  Library,
+  type LucideIcon,
+  MessagesSquare,
+  UsersRound
+} from "lucide-react";
 
 // Single source of truth for the primary nav routes, shared by the desktop top
 // nav (AppNav → NavLinks, labels only) and the mobile bottom bar (BottomNav,
@@ -16,5 +25,6 @@ export const TEACHER_NAV: NavItem[] = [
   { href: "/teacher", label: "Dashboard", shortLabel: "Home", icon: House },
   { href: "/teacher/batches", label: "Batches", icon: UsersRound },
   { href: "/teacher/papers", label: "Papers", icon: FileText },
+  { href: "/teacher/bank", label: "My bank", shortLabel: "Bank", icon: Library },
   { href: "/teacher/tests", label: "Tests", icon: ClipboardList }
 ];

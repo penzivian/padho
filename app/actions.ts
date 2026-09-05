@@ -1222,23 +1222,16 @@ export type LibraryPublishPayload = {
   defaultTopic: string;
 };
 
-// Publishes extracted questions into the SHARED library, visible to every teacher.
-//
-// Gated on an env allow-list rather than a role: this writes rows that every teacher on the
-// platform will see, so it must not be reachable by an ordinary teacher account.
-export async function publishToLibraryAction(payload: LibraryPublishPayload) {
-  const { user } = await requireRole("teacher");
-
-  if (!isPlatformOwner(user.email)) {
-    return { ok: false, message: "Only the platform owner can publish to the shared library." };
-  }
-
-  const admin = createSupabaseAdminClient();
+// Turns reviewed drafts into `bank_questions` rows. Shared by the shared-library publish and
+// the teacher's own bank: the rows are identical apart from `is_public` and who owns them,
+// and duplicating this was how the two would have drifted.
+function buildBankRows(
+  payload: LibraryPublishPayload,
+  ownerTeacherId: string,
+  isPublic: boolean
+): Insert<"bank_questions">[] {
   const sourceLabel = payload.sourceLabel.trim();
-  if (!sourceLabel) return { ok: false, message: "Add a source label, e.g. 'JEE Main 2024 Shift 1'." };
-
   const usable = payload.questions.filter((question) => question.question_text.trim());
-  if (usable.length === 0) return { ok: false, message: "Nothing to publish." };
 
   const difficulty = ["easy", "medium", "hard"].includes(payload.difficulty)
     ? payload.difficulty
@@ -1252,7 +1245,7 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
 
     const maxMarks = Math.max(0.5, Number(question.max_marks) || 1);
     rows.push({
-      owner_teacher_id: user.id,
+      owner_teacher_id: ownerTeacherId,
       question_text: question.question_text.trim(),
       question_type: question.question_type,
       topic: question.topic.trim() || payload.defaultTopic.trim() || "General",
@@ -1265,7 +1258,7 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
       image_path: question.image_path ?? null,
       source_label: sourceLabel,
       difficulty,
-      is_public: true,
+      is_public: isPublic,
       fingerprint: fingerprintQuestion({
         questionText: question.question_text,
         questionType: question.question_type,
@@ -1275,13 +1268,87 @@ export async function publishToLibraryAction(payload: LibraryPublishPayload) {
     });
   }
 
+  // The unique index is on (owner_teacher_id, fingerprint), so a batch containing the same
+  // question twice would still conflict with itself mid-upsert.
   const seen = new Set<string>();
-  const unique = rows.filter((row) => {
+  return rows.filter((row) => {
     if (seen.has(row.fingerprint)) return false;
     seen.add(row.fingerprint);
     return true;
   });
+}
 
+// Adds reviewed drafts to the teacher's OWN bank — private, `is_public = false`.
+//
+// No owner gate and no admin client: these rows belong to the caller, so the RLS-respecting
+// client is both sufficient and the correct authority. `bank_questions_insert_owner` already requires
+// `owner_teacher_id = auth.uid()` and a teacher role, which means a forged owner id is rejected by the
+// database rather than trusted from here.
+export async function saveToMyBankAction(payload: LibraryPublishPayload) {
+  const { user } = await requireRole("teacher");
+
+  if (!payload.sourceLabel.trim()) {
+    return { ok: false, message: "Name this batch of questions, e.g. 'Kinematics — Class 12'." };
+  }
+
+  const unique = buildBankRows(payload, user.id, false);
+  if (unique.length === 0) return { ok: false, message: "Nothing to add." };
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("bank_questions")
+    .upsert(unique, { onConflict: "owner_teacher_id,fingerprint", ignoreDuplicates: true })
+    .select("id");
+
+  if (error) return { ok: false, message: error.message };
+
+  const added = data?.length ?? 0;
+  revalidatePath("/teacher/bank");
+  return {
+    ok: true,
+    message:
+      added === unique.length
+        ? `Added ${added} question${added === 1 ? "" : "s"} to your bank.`
+        : `Added ${added} of ${unique.length} — the rest were already in your bank.`
+  };
+}
+
+// Removes one question from the caller's own bank.
+//
+// Through the RLS-respecting client on purpose: `bank_questions` policies scope a delete to
+// the owner, so a teacher cannot reach another teacher's row or a shared-library row even by
+// guessing an id. Papers already built keep their copy — the bank is copied FROM, never
+// referenced, which is exactly why deleting here is safe.
+export async function deleteBankQuestionAction(formData: FormData) {
+  await requireRole("teacher");
+  const supabase = createSupabaseServerClient();
+  const id = readString(formData, "question_id");
+
+  const { error } = await supabase.from("bank_questions").delete().eq("id", id);
+  if (error) redirect(`/teacher/bank?error=${encodeURIComponent(error.message)}`);
+
+  revalidatePath("/teacher/bank");
+}
+
+// Publishes extracted questions into the SHARED library, visible to every teacher.
+//
+// Gated on an env allow-list rather than a role: this writes rows that every teacher on the
+// platform will see, so it must not be reachable by an ordinary teacher account.
+export async function publishToLibraryAction(payload: LibraryPublishPayload) {
+  const { user } = await requireRole("teacher");
+
+  if (!isPlatformOwner(user.email)) {
+    return { ok: false, message: "Only the platform owner can publish to the shared library." };
+  }
+
+  if (!payload.sourceLabel.trim()) {
+    return { ok: false, message: "Add a source label, e.g. 'JEE Main 2024 Shift 1'." };
+  }
+
+  const unique = buildBankRows(payload, user.id, true);
+  if (unique.length === 0) return { ok: false, message: "Nothing to publish." };
+
+  const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("bank_questions")
     .upsert(unique, { onConflict: "owner_teacher_id,fingerprint", ignoreDuplicates: true })

@@ -3,7 +3,10 @@ import {
   ArrowRight,
   ClipboardList,
   FileText,
+  Globe2,
+  Library,
   MessageCircleQuestion,
+  Search,
   Send,
   Users
 } from "lucide-react";
@@ -50,8 +53,8 @@ const STEPS = [
 const FEATURES = [
   {
     icon: FileText,
-    title: "Papers and question bank",
-    text: "Extract from a PDF, reuse across papers, dedupe automatically."
+    title: "Papers from a PDF",
+    text: "Upload a past paper and it becomes editable questions, diagrams and all."
   },
   {
     icon: ClipboardList,
@@ -67,6 +70,31 @@ const FEATURES = [
     icon: MessageCircleQuestion,
     title: "Practice and doubts",
     text: "Publish practice sets from any paper. Students ask doubts between classes."
+  }
+];
+
+const QUESTION_BANKS = [
+  {
+    icon: Library,
+    eyebrow: "Yours",
+    title: "My question bank",
+    text: "Every paper you upload becomes searchable questions — stems, options and cropped diagrams. Build the next paper by pulling from the last three instead of starting at a blank page.",
+    points: [
+      "Private to you. Nobody else on Padho can see it.",
+      "Re-import the same paper and it dedupes itself.",
+      "A paper takes a copy, so editing one never rewrites a test students already sat."
+    ]
+  },
+  {
+    icon: Globe2,
+    eyebrow: "Everyone's",
+    title: "Shared library",
+    text: "Real JEE Main previous-year questions, extracted from the official papers and checked against the official answer keys. Free to pull into any paper you build.",
+    points: [
+      "Physics, Chemistry and Maths, filterable by subject.",
+      "Every question carries the shift it came from, so you can set a real 2025 paper.",
+      "Official answer keys and JEE marking — +4 correct, −1 wrong."
+    ]
   }
 ];
 
@@ -266,6 +294,53 @@ export default function HomePage() {
                 <p className="text-sm leading-relaxed text-muted-foreground">{feature.text}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+
+        {/* ── The question banks. A teacher will not upload anything until they understand
+            what they get back, and "question bank" means two different things here — their
+            own material, and the shared past-paper corpus. Spelled out rather than implied. ── */}
+        <section id="question-bank" className="border-y bg-card/40">
+          <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+            <div className="max-w-2xl">
+              <p className="stat-label flex items-center gap-2">
+                <Search className="h-4 w-4 text-primary" aria-hidden="true" />
+                Question banks
+              </p>
+              <h2 className="mt-3 text-balance font-serif text-3xl font-semibold sm:text-4xl">
+                Two banks to build from. Never start at a blank page.
+              </h2>
+              <p className="mt-4 leading-relaxed text-muted-foreground">
+                Search both at once, or narrow to one. Filter by subject and topic, add what
+                fits, and edit it freely — the paper takes its own copy.
+              </p>
+            </div>
+
+            <div className="mt-10 grid gap-4 lg:grid-cols-2">
+              {QUESTION_BANKS.map((bank) => (
+                <div
+                  key={bank.title}
+                  className="surface-gradient flex flex-col rounded-xl border p-6 shadow-sm sm:p-8"
+                >
+                  <bank.icon className="h-6 w-6 text-primary" aria-hidden="true" />
+                  <p className="stat-label mt-4">{bank.eyebrow}</p>
+                  <h3 className="mt-1 font-serif text-2xl font-semibold">{bank.title}</h3>
+                  <p className="mt-3 leading-relaxed text-muted-foreground">{bank.text}</p>
+                  <ul className="mt-5 grid gap-2.5 border-t pt-5">
+                    {bank.points.map((point) => (
+                      <li key={point} className="flex gap-2.5 text-sm leading-relaxed">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                        />
+                        <span className="text-muted-foreground">{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 

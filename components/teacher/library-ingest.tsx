@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useFormState } from "react-dom";
-import { UploadCloud, Trash2, Globe2 } from "lucide-react";
+import { UploadCloud, Trash2, Globe2, Library } from "lucide-react";
 
 import {
   extractDraftQuestionsAction,
   publishToLibraryAction,
+  saveToMyBankAction,
   type DraftQuestionsState
 } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -21,10 +22,39 @@ import { applyAnswerKey } from "@/lib/extract";
 
 const initialState: DraftQuestionsState = { ok: false, message: "" };
 
-// Upload a past paper, review what was extracted, tag it, publish it to every teacher.
-// Reuses the same extraction pipeline as the paper builder — the difference is only where
-// the questions land and who can see them.
-export function LibraryIngest() {
+// Where reviewed questions land. The two destinations differ only in `is_public` and who can
+// see the result, so they share this whole screen rather than a near-identical copy of it.
+export type IngestDestination = "library" | "mine";
+
+const COPY = {
+  library: {
+    icon: Globe2,
+    title: "Add a past paper to the library",
+    sourceLabel: "Source (shown to teachers)",
+    sourcePlaceholder: "JEE Main 2024 · Shift 1",
+    submit: (n: number) => `Publish ${n} to shared library`,
+    pending: "Publishing",
+    note: "Every teacher on Padho will be able to search and reuse these.",
+    missingSource: "Add a source label first, e.g. 'JEE Main 2024 · Shift 1'."
+  },
+  mine: {
+    icon: Library,
+    title: "Add questions to my bank",
+    sourceLabel: "Bank name (how you'll find these later)",
+    sourcePlaceholder: "Kinematics — Class 12",
+    submit: (n: number) => `Add ${n} to my bank`,
+    pending: "Adding",
+    note: "Private to you. Reuse them from the New paper screen whenever you build a paper.",
+    missingSource: "Name this batch of questions, e.g. 'Kinematics — Class 12'."
+  }
+} as const;
+
+// Upload a past paper, review what was extracted, tag it, and file it — either into the
+// shared library (owner only) or into the teacher's own private bank. Reuses the same
+// extraction pipeline as the paper builder; only the destination differs.
+export function LibraryIngest({ destination = "library" }: { destination?: IngestDestination }) {
+  const copy = COPY[destination];
+  const DestinationIcon = copy.icon;
   const [extractState, extractAction] = useFormState(extractDraftQuestionsAction, initialState);
   const [questions, setQuestions] = useState<DraftQuestion[]>([]);
   const [sourceLabel, setSourceLabel] = useState("");
@@ -42,12 +72,13 @@ export function LibraryIngest() {
 
   function publish() {
     if (!sourceLabel.trim()) {
-      setMessage("Add a source label first, e.g. 'JEE Main 2024 · Shift 1'.");
+      setMessage(copy.missingSource);
       return;
     }
 
     startTransition(async () => {
-      const result = await publishToLibraryAction({
+      const save = destination === "mine" ? saveToMyBankAction : publishToLibraryAction;
+      const result = await save({
         questions,
         sourceLabel,
         subject,
@@ -66,8 +97,8 @@ export function LibraryIngest() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Globe2 className="h-5 w-5 text-primary" aria-hidden="true" />
-          Add a past paper to the library
+          <DestinationIcon className="h-5 w-5 text-primary" aria-hidden="true" />
+          {copy.title}
         </CardTitle>
       </CardHeader>
 
@@ -90,11 +121,11 @@ export function LibraryIngest() {
         {questions.length > 0 ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField htmlFor="source_label" label="Source (shown to teachers)">
+              <FormField htmlFor="source_label" label={copy.sourceLabel}>
                 <Input
                   id="source_label"
                   value={sourceLabel}
-                  placeholder="JEE Main 2024 · Shift 1"
+                  placeholder={copy.sourcePlaceholder}
                   onChange={(event) => setSourceLabel(event.target.value)}
                 />
               </FormField>
@@ -183,11 +214,9 @@ export function LibraryIngest() {
 
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" disabled={pending} onClick={publish}>
-                {pending ? "Publishing" : `Publish ${questions.length} to shared library`}
+                {pending ? copy.pending : copy.submit(questions.length)}
               </Button>
-              <p className="script-note">
-                Every teacher on Padho will be able to search and reuse these.
-              </p>
+              <p className="script-note">{copy.note}</p>
             </div>
           </>
         ) : null}
