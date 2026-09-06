@@ -6,6 +6,7 @@ import {
   Globe2,
   Library,
   MessageCircleQuestion,
+  MessageSquarePlus,
   Search,
   Send,
   Users
@@ -17,6 +18,7 @@ import {
   TopicStrengthVignette
 } from "@/components/marketing/vignettes";
 import { Button } from "@/components/ui/button";
+import { optionalEnv } from "@/lib/env";
 
 // The three things a national app structurally cannot offer an institute. These lead the page
 // deliberately: every competitor in this market sells "AI", so Padho sells ownership instead.
@@ -108,6 +110,12 @@ const LEGAL_LINKS = [
 // Statically rendered. The signed-in redirect and Supabase's auth-param fallback both moved to
 // middleware.ts — reading searchParams here would make the route dynamic again.
 export default function HomePage() {
+  // Where "Tell us what you need" points — a Google Form, Tally, anything. Read from env so
+  // the destination can change without a deploy, and so the button is simply absent rather
+  // than dead when nothing is configured. NEXT_PUBLIC_ because this page is statically
+  // rendered and the value is public by nature.
+  const feedbackUrl = optionalEnv("NEXT_PUBLIC_FEEDBACK_URL").trim();
+
   return (
     <div className="min-h-screen">
       {/* This page sits outside the app shell, so it carries its own header. */}
@@ -166,6 +174,14 @@ export default function HomePage() {
                   <Button asChild variant="outline" className="h-12 px-6 text-base">
                     <Link href="#how-it-works">See how it works</Link>
                   </Button>
+                  {feedbackUrl ? (
+                    <Button asChild variant="ghost" className="h-12 px-6 text-base">
+                      <a href={feedbackUrl} target="_blank" rel="noopener noreferrer">
+                        <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+                        Tell us what you need
+                      </a>
+                    </Button>
+                  ) : null}
                 </div>
                 <p className="script-note mt-6">
                   Free while we are getting started. No card, no setup fee.

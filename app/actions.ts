@@ -1144,6 +1144,10 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
   const subject = readString(formData, "subject");
   const type = readString(formData, "question_type");
   const scope = readString(formData, "scope") as BankScope;
+  // The picker lets a teacher ask for N questions at once, so it must be able to fetch at
+  // least N. Clamped here rather than trusted — this is a caller-supplied row count.
+  const requested = Number(readString(formData, "limit")) || 50;
+  const limit = Math.min(Math.max(requested, 1), 200);
 
   let query = supabase
     .from("bank_questions")
@@ -1151,7 +1155,7 @@ export async function searchBankAction(formData: FormData): Promise<BankSearchRe
       "question_text,question_type,topic,subject,options,correct_answer,max_marks,negative_marks,rubric,image_path,source_label,is_public"
     )
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(limit);
 
   if (scope === "mine") query = query.eq("owner_teacher_id", user.id);
   if (scope === "library") query = query.eq("is_public", true);
