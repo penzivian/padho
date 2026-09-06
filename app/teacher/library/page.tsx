@@ -53,9 +53,15 @@ export default async function LibraryPage() {
             Published here, a question is available to every teacher on Padho.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/teacher/papers">Question papers</Link>
-        </Button>
+        {/* Both owner-only screens; linked to each other because neither is in the nav. */}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/teacher/feedback">Feedback</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/teacher/papers">Question papers</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

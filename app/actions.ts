@@ -166,6 +166,49 @@ export async function updateProfileAction(formData: FormData) {
   redirect("/profile?saved=1");
 }
 
+export type FeedbackState = ActionState;
+
+// The interest question, as stored. Kept in sync with feedback_interest_allowed.
+const FEEDBACK_INTEREST = ["yes", "maybe", "not_now"];
+
+// Feedback from the landing page — the ONLY write in this app a logged-out visitor can make.
+//
+// No auth check, deliberately: the people whose answers matter most have not signed up yet.
+// It goes through the RLS-respecting client, so the only thing it can possibly do is insert
+// one row — `feedback_insert_anyone` is the table's single policy, and with no select policy
+// this path cannot read anyone else's response back.
+export async function submitFeedbackAction(
+  _prevState: FeedbackState,
+  formData: FormData
+): Promise<FeedbackState> {
+  // Honeypot: a field positioned off-screen that a person never sees and a bot fills in.
+  // Answer "thanks" either way rather than telling a scraper it was caught.
+  if (readString(formData, "website")) return { ok: true, message: "Thank you — that helps." };
+
+  const suggestion = readString(formData, "suggestion").trim();
+  if (!suggestion) {
+    return { ok: false, message: "Tell us one thing we should build or fix." };
+  }
+
+  const interest = readString(formData, "interest").trim();
+  const supabase = createSupabaseServerClient();
+
+  // Trimmed to the same caps the table enforces, so an over-long paste reads as a tidy
+  // truncation rather than a constraint violation the visitor cannot act on.
+  const { error } = await supabase.from("feedback").insert({
+    suggestion: suggestion.slice(0, 4000),
+    interest: FEEDBACK_INTEREST.includes(interest) ? interest : "",
+    name: readString(formData, "name").trim().slice(0, 200),
+    contact: readString(formData, "contact").trim().slice(0, 200)
+  });
+
+  if (error) {
+    return { ok: false, message: "Could not send that just now. Please try again." };
+  }
+
+  return { ok: true, message: "Thank you — that helps." };
+}
+
 export async function createBatchAction(formData: FormData) {
   const { user } = await requireRole("teacher");
   const supabase = createSupabaseServerClient();
